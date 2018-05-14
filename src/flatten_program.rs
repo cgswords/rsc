@@ -18,6 +18,7 @@
 
 use util::Binop;
 use util::Relop;
+use util::Label;
 
 use generate_x86_64::X86Exp;
 use generate_x86_64::X86LangStmt;
@@ -27,13 +28,10 @@ use generate_x86_64::Program as X86Program;
 // INPUT LANGUAGE
 // ---------------------------------------------------------------------------
 #[derive(Debug)]
-pub enum Program { Letrec(Vec<LetrecEntry>, Exp) }
+pub enum Program { Letrec(Vec<Letrec>, Exp) }
 
 #[derive(Debug)]
-pub enum LetrecEntry { Entry(Label,Exp) }
-
-#[derive(Debug)]
-pub enum Label { Label(String) }
+pub enum Letrec { Entry(Label,Exp) }
 
 #[derive(Debug)]
 pub enum Exp 
@@ -85,31 +83,26 @@ pub enum Triv
 // ---------------------------------------------------------------------------
 // IMPLEMENTATION
 // ---------------------------------------------------------------------------
-fn loc(input : Location) -> X86Exp {
-  return match input 
-  { Location::Reg(s)        => X86Exp::ExpReg(s)
-  , Location::Displace(s,n) => X86Exp::ExpDisplace(s,n)
+pub fn flatten_program(input : Program) -> X86Program {
+  match input {
+    Program::Letrec(letrecs, body) => {
+      let mut output = Vec::new();
+      output.append(&mut exp(body));
+      for binding in letrecs {
+        output.append(&mut letrec_entry(binding));
+      }
+      return X86Program::Program(output);
+    }
   }
 }
 
-fn label(input : Label) -> X86Exp {
-  return match input { 
-    Label::Label(s) => X86Exp::ExpLabel(s)
-  }
-}
-
-fn triv(input : Triv) -> X86Exp {
-  return match input
-  { Triv::Loc(l)   => loc(l)
-  , Triv::Num(n)   => X86Exp::ExpNum(n)
-  , Triv::Label(l) => label(l) 
-  } 
-}
-
-fn effect(input : Effect) -> X86LangStmt {
-  return match input 
-  { Effect::SetOp(location, (binop, t1, t2)) => X86LangStmt::SetOp(loc(location), (binop, triv(t1), triv(t2)))
-  , Effect::Set(location, trivial) => X86LangStmt::SetLoad(loc(location),triv(trivial))
+fn letrec_entry(input : Letrec) -> Vec<X86LangStmt> {
+  match input
+  { Letrec::Entry(Label::Label(s),rhs) =>
+    { let mut output_vec = exp(rhs);
+      output_vec.insert(0,X86LangStmt::Lbl(s));
+      return output_vec;
+    }
   }
 }
 
@@ -129,26 +122,31 @@ fn exp(input : Exp) -> Vec<X86LangStmt> {
   }
 }
 
-fn letrec_entry(input : LetrecEntry) -> Vec<X86LangStmt> {
-  match input
-  { LetrecEntry::Entry(Label::Label(s),rhs) =>
-    { let mut output_vec = exp(rhs);
-      output_vec.insert(0,X86LangStmt::Lbl(s));
-      return output_vec;
-    }
+fn effect(input : Effect) -> X86LangStmt {
+  return match input 
+  { Effect::SetOp(location, (binop, t1, t2)) => X86LangStmt::SetOp(loc(location), (binop, triv(t1), triv(t2)))
+  , Effect::Set(location, trivial) => X86LangStmt::SetLoad(loc(location),triv(trivial))
   }
 }
 
-pub fn flatten_program(input : Program) -> X86Program {
-  match input {
-    Program::Letrec(letrecs, body) => {
-      let mut output = Vec::new();
-      output.append(&mut exp(body));
-      for binding in letrecs {
-        output.append(&mut letrec_entry(binding));
-      }
-      return X86Program::Program(output);
-    }
+fn loc(input : Location) -> X86Exp {
+  return match input 
+  { Location::Reg(s)        => X86Exp::ExpReg(s)
+  , Location::Displace(s,n) => X86Exp::ExpDisplace(s,n)
+  }
+}
+
+fn triv(input : Triv) -> X86Exp {
+  return match input
+  { Triv::Loc(l)   => loc(l)
+  , Triv::Num(n)   => X86Exp::ExpNum(n)
+  , Triv::Label(l) => label(l) 
+  } 
+}
+
+fn label(input : Label) -> X86Exp {
+  return match input { 
+    Label::Label(s) => X86Exp::ExpLabel(s)
   }
 }
 
@@ -181,14 +179,14 @@ fn mk_set(dest: Location, val: Triv) -> Effect {
 
 pub fn test1() -> Program {
   return Program::Letrec(
-           vec![ LetrecEntry::Entry(mk_lbl("X2")
+           vec![ Letrec::Entry(mk_lbl("X2")
                                    , Exp::Begin(
                                         vec![mk_set_op(mk_reg("rax"), Binop::Plus, mk_loc_triv(mk_reg("rax")), mk_num_lit(10))]
                                        , Box::new(mk_call("X3"))))
-               , LetrecEntry::Entry(mk_lbl("X1")
+               , Letrec::Entry(mk_lbl("X1")
                                    , Exp::If(Relop::LT ,mk_loc_triv(mk_reg("r9")), mk_loc_triv(mk_reg("r8")), 
                                              mk_lbl("X2"),mk_lbl("X3")))
-               , LetrecEntry::Entry(mk_lbl("X3")
+               , Letrec::Entry(mk_lbl("X3")
                                    , Exp::Begin(
                                         vec![mk_set_op(mk_reg("rax"), Binop::Plus, mk_loc_triv(mk_reg("rax")), mk_num_lit(10))]
                                        , Box::new(mk_call("void"))))
