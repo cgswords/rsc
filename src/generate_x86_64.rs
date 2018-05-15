@@ -18,7 +18,8 @@ use util::RETURN_ADDR_REG;
 pub enum X86Exp 
   { ExpLabel(String)
   , ExpReg(String)
-  , ExpDisplace(String, i64) // Register and Offset
+  , ExpDisplace(String, i64) // base register and offset value
+  , ExpIndex(String, String) // base register and offset register
   , ExpNum(i64)
   }
 
@@ -71,60 +72,30 @@ fn lookup_relop(op : Relop, negated : bool) -> String {
 }
 
 fn emit_exp (input: X86Exp) -> String {
-  match input  
-  { X86Exp::ExpLabel(s) => 
-    { let mut output = String::new();
-      output.push_str(&s);
-      output.push_str(&"(%rip)".to_string());
-      return output;
-    }
-  , X86Exp::ExpReg(s) => 
-    { let mut output = String::new();
-      output.push('%');
-      output.push_str(&s);
-      return output;
-    }
-  , X86Exp::ExpDisplace(reg, offset) =>  
-    { let mut output = String::new();
-      output.push_str(&offset.to_string());
-      output.push('(');
-      output.push_str(&reg);
-      output.push(')');
-      return output;
-    }
-  , X86Exp::ExpNum(n) => { return n.to_string(); }
+  return match input  
+  { X86Exp::ExpLabel(s) => format!("{}(%rip)",s) 
+  , X86Exp::ExpReg(s) => format!("%{}", s)
+  , X86Exp::ExpDisplace(reg, offset) => format!("{}(%{})",offset.to_string(),reg) 
+  , X86Exp::ExpIndex(reg, index) => format!("(%{}, %{})", reg, index)
+  , X86Exp::ExpNum(n) => n.to_string()
   }
 }
 
 fn emit_label(output: &mut String, label: &String) {
   output.push_str(".align 8\n");
-  output.push_str(label);
-  output.push(':');
-  output.push('\n');
+  output.push_str(&format!("{}:\n",label));
 }
 
 fn emit_op(output: &mut String, op : &String) {
-  output.push_str("    "); 
-  output.push_str(op);
-  output.push('\n'); 
+  output.push_str(&format!("    {}\n", op));
 }
 
 fn emit_unop(output: &mut String, op : &String, arg : &String) {
-  output.push_str("    "); 
-  output.push_str(op);
-  output.push_str(" ");
-  output.push_str(arg);
-  output.push('\n');
+  output.push_str(&format!("    {} {}\n",op,arg));
 }
 
 fn emit_binop(output: &mut String, op : &String, arg1 : &String, arg2 : &String) {
-  output.push_str("    "); 
-  output.push_str(op);
-  output.push_str(" ");
-  output.push_str(arg1);
-  output.push_str(", ");
-  output.push_str(arg2);
-  output.push('\n');
+  output.push_str(&format!("    {} {}, {}\n",op,arg1,arg2));
 }
 
 fn emit_jump(output: &mut String, op : &String, arg : X86Exp) {

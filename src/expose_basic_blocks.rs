@@ -18,12 +18,12 @@ use util::Relop;
 use util::unique_label;
 use util::Label;
 
-use flatten_program::Program as FPProgram;
-use flatten_program::Letrec as FPLetrec;
-use flatten_program::Exp as FPExp;
-use flatten_program::Effect as FPEffect;
+use flatten_program::Program  as FPProgram;
+use flatten_program::Letrec   as FPLetrec;
+use flatten_program::Exp      as FPExp;
+use flatten_program::Effect   as FPEffect;
 use flatten_program::Location as FPLoc;
-use flatten_program::Triv as FPTriv;
+use flatten_program::Triv     as FPTriv;
 
 // ---------------------------------------------------------------------------
 // INPUT LANGUAGE
@@ -63,7 +63,8 @@ pub enum Effect
 #[derive(Debug)]
 pub enum Location 
   { Reg(String)
-  , Displace(String, i64) // Register and Offset
+  , DisplaceOperand(String, i64) // base register and offset value
+  , IndexOperand(String, String) // base register and offset register
   }
 
 #[derive(Debug)]
@@ -95,7 +96,8 @@ pub enum Triv
 // 
 // pub enum Location 
 //   { Reg(String)
-//   , Displace(String, i64) // Register and Offset
+//   , DisplaceOperand(String, i64) // base register and offset value
+//   , IndexOperand(String, String) // base register and offset register
 //   }
 // 
 // pub enum Triv 
@@ -261,8 +263,9 @@ fn effect_star(input : Vec<Effect>, last : FPExp, input_bindings : &mut Vec<FPLe
 
 fn loc(input : Location) -> FPLoc {
   return match input 
-  { Location::Reg(s)        => FPLoc::Reg(s)
-  , Location::Displace(s,n) => FPLoc::Displace(s,n)
+  { Location::Reg(s)                => FPLoc::Reg(s)
+  , Location::DisplaceOperand(s, n) => FPLoc::DisplaceOperand(s,n)
+  , Location::IndexOperand(s1, s2)  => FPLoc::IndexOperand(s1,s2)
   }
 }
 
@@ -277,19 +280,23 @@ fn triv(input : Triv) -> FPTriv {
 // ---------------------------------------------------------------------------
 // TESTING
 // ---------------------------------------------------------------------------
-// TODO: Ha
+
 fn mk_num_lit(n: i64) -> Triv {
   return Triv::Num(n);
 }
+
 fn mk_reg(s: &str) -> Location {
   return Location::Reg(s.to_string());
 }
+
 fn mk_call(s: &str) -> Exp {
   return Exp::Call(Triv::Label(mk_lbl(s)));
 }
+
 fn mk_lbl(s : &str) -> Label {
   return Label::Label(s.to_string());
 }
+
 fn mk_set_op(dest: Location, op: Binop, t1 : Triv, t2: Triv) -> Effect {
   return Effect::SetOp(dest, (op, t1, t2));
 }

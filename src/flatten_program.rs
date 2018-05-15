@@ -49,7 +49,8 @@ pub enum Effect
 #[derive(Debug)]
 pub enum Location 
   { Reg(String)
-  , Displace(String, i64) // Register and Offset
+  , DisplaceOperand(String, i64) // base register and offset value
+  , IndexOperand(String, String) // base register and offset register
   }
 
 #[derive(Debug)]
@@ -65,7 +66,8 @@ pub enum Triv
 // pub enum X86Exp
 //   { ExpLabel(String)
 //   , ExpReg(String)
-//   , ExpDisplace(String, i64) // Register and Offset
+//   , ExpDisplace(String, i64) // base register and offset value
+//   , ExpIndex(String, String) // base register and offset register
 //   , ExpNum(i64)
 //   }
 // 
@@ -132,7 +134,8 @@ fn effect(input : Effect) -> X86LangStmt {
 fn loc(input : Location) -> X86Exp {
   return match input 
   { Location::Reg(s)        => X86Exp::ExpReg(s)
-  , Location::Displace(s,n) => X86Exp::ExpDisplace(s,n)
+  , Location::DisplaceOperand(s,n) => X86Exp::ExpDisplace(s,n)
+  , Location::IndexOperand(s,n) => X86Exp::ExpIndex(s,n)
   }
 }
 

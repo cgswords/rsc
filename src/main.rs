@@ -11,6 +11,8 @@ use flatten_program::flatten_program;
 mod expose_basic_blocks;
 use expose_basic_blocks::expose_basic_blocks;
 
+mod expose_memory_operands;
+use expose_memory_operands::expose_memory_operands;
 
 fn main() {
 
@@ -35,5 +37,18 @@ fn main() {
    let output5 : String = generate_x86_64(flatten_program(expose_basic_blocks(expose_basic_blocks::test1()))); 
    
    println!("{}",output5); 
+
+   let output6 = expose_memory_operands(expose_memory_operands::test1()); 
+   
+   println!("{:?}",output6); 
+
+   let output7 : String = 
+    generate_x86_64(
+    flatten_program(
+    expose_basic_blocks(
+    expose_memory_operands(
+      expose_memory_operands::test1())))); 
+   
+   println!("{}",output7); 
 
 }
