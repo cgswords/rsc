@@ -160,6 +160,7 @@ fn exp(input : Exp) -> (FPExp, Vec<FPLetrec>) {
     }
   , Exp::Begin(effects, last) => 
     { let (body, mut body_bindings) = exp(*last);
+      println!("EXP===\n{:?}\nEXP===\n", effects);
       let (effs, mut effs_bindings) = effect_star(effects, body, &mut Vec::new());
       
       let mut output_letrec = Vec::new();
@@ -214,10 +215,10 @@ fn effect_star(input : Vec<Effect>, last : FPExp, input_bindings : &mut Vec<FPLe
   let mut bindings = Vec::new();
   bindings.append(input_bindings);
 
-  let mut effects : Vec<Effect> = input.into_iter().rev().collect();
+  let mut effects : Vec<Effect> = input;
   let mut tail = last;
 
-  while (effects.is_empty() == false) {
+  while effects.is_empty() == false {
     if let Some(effect) = effects.pop() {
       match effect 
       { Effect::SetOp(location, (bop, t1, t2)) => 
@@ -250,9 +251,10 @@ fn effect_star(input : Vec<Effect>, last : FPExp, input_bindings : &mut Vec<FPLe
           tail = pred_body;
         }
       , Effect::Begin(mut effs, eff) => 
-        { 
-          effects.append(&mut effs);
+        {
+          effects.append(&mut *effs);
           effects.push(*eff);
+          println!("===\n{:?}\n===\n", effects);
         }
       }
     }

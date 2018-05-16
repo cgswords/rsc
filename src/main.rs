@@ -1,6 +1,6 @@
 mod util;
-use util::Binop;
-use util::Relop;
+//use util::Binop;
+//use util::Relop;
 
 mod generate_x86_64;
 use generate_x86_64::generate_x86_64;
@@ -13,6 +13,12 @@ use expose_basic_blocks::expose_basic_blocks;
 
 mod expose_memory_operands;
 use expose_memory_operands::expose_memory_operands;
+
+mod expose_frame_pointer;
+use expose_frame_pointer::expose_frame_pointer;
+
+mod expose_frame_variables;
+use expose_frame_variables::expose_frame_variables;
 
 fn main() {
 
@@ -51,4 +57,32 @@ fn main() {
    
    println!("{}",output7); 
 
+   let output8 = expose_frame_pointer(expose_frame_pointer::test1()); 
+   
+   println!("{:?}",output8); 
+
+   let output9 : String = 
+    generate_x86_64(
+    flatten_program(
+    expose_basic_blocks(
+    expose_memory_operands(
+    expose_frame_pointer(
+      expose_frame_pointer::test1()))))); 
+   
+   println!("{}",output9);
+
+   let output10 = expose_frame_variables(expose_frame_variables::test1()); 
+   
+   println!("{:?}",output10); 
+
+   let output11 : String = 
+    generate_x86_64(
+    flatten_program(
+    expose_basic_blocks(
+    expose_memory_operands(
+    expose_frame_pointer(
+    expose_frame_variables(
+      expose_frame_variables::test1())))))); 
+   
+   println!("{}",output11); 
 }

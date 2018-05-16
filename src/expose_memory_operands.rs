@@ -17,7 +17,6 @@
 
 use util::Binop;
 use util::Relop;
-use util::unique_label;
 use util::Label;
 
 use expose_basic_blocks::Program  as EBBProgram;
@@ -174,17 +173,10 @@ fn mk_displacement_operand(reg : String, offset : i64) -> EBBLoc {
 
 fn effect(input: Effect) -> EBBEffect {
   return match input 
-  { Effect::SetOp(l, (op, t1, t2)) => 
-      match op
-      { Binop::Plus   => EBBEffect::SetOp (loc(l), (Binop::Plus,   triv(t1), triv(t2)))   
-      , Binop::Minus  => EBBEffect::SetOp (loc(l), (Binop::Minus,  triv(t1), triv(t2)))   
-      , Binop::Mult   => EBBEffect::SetOp (loc(l), (Binop::Mult,   triv(t1), triv(t2)))   
-      , Binop::LogAnd => EBBEffect::SetOp (loc(l), (Binop::LogAnd, triv(t1), triv(t2)))   
-      , Binop::LogOr  => EBBEffect::SetOp (loc(l), (Binop::LogOr,  triv(t1), triv(t2)))   
-      }
-  , Effect::Set(l, t)      => EBBEffect::Set(loc(l),triv(t))
-  , Effect::Nop            => EBBEffect::Nop
-  , Effect::MSet(base,offset,val) => 
+  { Effect::SetOp(l, (op, t1, t2)) => EBBEffect::SetOp (loc(l), (op, triv(t1), triv(t2)))
+  , Effect::Set(l, t)              => EBBEffect::Set(loc(l),triv(t))
+  , Effect::Nop                    => EBBEffect::Nop
+  , Effect::MSet(base,offset,val)  =>
       match offset
       { Offset::Reg(reg) => EBBEffect::Set(mk_index_operand(base, reg), triv(val))
       , Offset::Num(num) => EBBEffect::Set(mk_displacement_operand(base, num), triv(val))
