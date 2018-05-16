@@ -1,4 +1,4 @@
-// PASS    | expose-frame-pointers
+// PASS    | expose_frame_pointers
 // ---------------------------------------------------------------------------
 // USAGE   | Convert return-point forms into return-point forms without 
 //         | frame bumps.

@@ -1,4 +1,4 @@
-// PASS    | expose-frame-variables
+// PASS    | expose_frame_variables
 // ---------------------------------------------------------------------------
 // USAGE   | Deal with frame variables, computing offsets and converting them
 // ---------------------------------------------------------------------------

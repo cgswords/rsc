@@ -1,3 +1,6 @@
+
+use std::hash::{Hash, Hasher};
+
 #[derive(Debug)]
 pub enum Binop 
   { Plus
@@ -42,6 +45,25 @@ pub fn unique_label(label: &str) -> Label {
     let mut label_str = label.to_string();
     label_str.push_str(&next_lbl_cnt());
     return Label::Label(label_str);
+}
+
+// A variable is a string and number, so that we can number them easily for
+// uniqueness. The ids _must_ be unique: it's a large part of how we hash 'em.
+#[derive(Debug, PartialEq, Eq)]
+pub struct UniqueVar 
+{ pub name : String
+, pub id : i64
+}
+
+pub fn mk_uvar(new_name : &str, new_id : i64) -> UniqueVar {
+  return UniqueVar { name : new_name.to_string(), id : new_id };
+}
+
+impl Hash for UniqueVar {
+  fn hash<H: Hasher>(&self, state: &mut H) {
+    self.name.hash(state);
+    self.id.hash(state);
+  }
 }
 
 

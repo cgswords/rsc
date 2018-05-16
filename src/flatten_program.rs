@@ -1,4 +1,4 @@
-// PASS    | flatten-program
+// PASS    | flatten_program
 // ---------------------------------------------------------------------------
 // USAGE   | Flattens the result of exposing basic blocs into a
 //         | program ready to be turned into x86-64 assembly

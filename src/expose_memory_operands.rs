@@ -1,4 +1,4 @@
-// PASS    | expose-memory-operands
+// PASS    | expose_memory_operands
 // ---------------------------------------------------------------------------
 // USAGE   | Swap mset operations with set! operations, converting frame
 //         | variables to displacement operands

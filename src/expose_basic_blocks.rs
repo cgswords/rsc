@@ -1,4 +1,4 @@
-// PASS    | expose-basic-blocks
+// PASS    | expose_basic_blocks
 // ---------------------------------------------------------------------------
 // USAGE   | Unravels the basic blocks of each program into additional 
 //         | bindings, exposing each individual basic block
@@ -160,7 +160,6 @@ fn exp(input : Exp) -> (FPExp, Vec<FPLetrec>) {
     }
   , Exp::Begin(effects, last) => 
     { let (body, mut body_bindings) = exp(*last);
-      println!("EXP===\n{:?}\nEXP===\n", effects);
       let (effs, mut effs_bindings) = effect_star(effects, body, &mut Vec::new());
       
       let mut output_letrec = Vec::new();
@@ -254,7 +253,6 @@ fn effect_star(input : Vec<Effect>, last : FPExp, input_bindings : &mut Vec<FPLe
         {
           effects.append(&mut *effs);
           effects.push(*eff);
-          println!("===\n{:?}\n===\n", effects);
         }
       }
     }
