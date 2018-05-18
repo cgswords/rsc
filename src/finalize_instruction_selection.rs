@@ -1,16 +1,15 @@
-// PASS    | discard_call_lives
+// PASS    | finalize_instruction_selection
 // ---------------------------------------------------------------------------
-// USAGE   | discard_call_life : discard_call_live::Program ->
-//         |                     finalize_location::Program
+// USAGE   | finalize_instruction_selection : reg_alloc::Program -> 
+//         |                                  discard_allocation_info::Program
 // ---------------------------------------------------------------------------
-// RETURNS | A program without any call-live variables, removing the lists.
+// RETURNS | The expression with the allocation information removed, leaving
+//         | the variable-location HashMaps in its place.
 // ---------------------------------------------------------------------------
 // DESCRIPTION
 // ---------------------------------------------------------------------------
-// This pass discards the call-live information for each procedure invocation,
-// leaving them as Call forms to trivials without additional information.
-//
-// We do the obvious walk, dropping the information.
+// This pass walks through the very top level of the expressions, discarding 
+// the relevant forms.
 //// ---------------------------------------------------------------------------
 
 use util::Binop;
@@ -20,88 +19,53 @@ use util::UniqueVar;
 use util::Location;
 use util::mk_uvar;
 
+use alloc_lang::Program;
+use alloc_lang::Letrec;
+use alloc_lang::Exp;
+use alloc_lang::Pred;
+use alloc_lang::Effect;
+use alloc_lang::Variable;
+use alloc_lang::Triv;
+use alloc_lang::Offset;
+
 use std::collections::HashMap;
 
-use finalize_locations::Program  as FLProgram;
-use finalize_locations::Letrec   as FLLetrec;
-use finalize_locations::Exp      as FLExp;
-use finalize_locations::Effect   as FLEffect;
-use finalize_locations::Pred     as FLPred;
-use finalize_locations::Triv     as FLTriv;
-use finalize_locations::Offset   as FLOffset;
-use finalize_locations::Variable as FLVar;
+use discard_alloc_info::Program  as DAIProgram;
+use discard_alloc_info::Letrec   as DAILetrec;
+use discard_alloc_info::Exp      as DAIExp;
+use discard_alloc_info::Effect   as DAIEffect;
+use discard_alloc_info::Pred     as DAIPred;
+use discard_alloc_info::Triv     as DAITriv;
+use discard_alloc_info::Offset   as DAIOffset;
+use discard_alloc_info::Var      as DAIVar;
 
 // ---------------------------------------------------------------------------
 // INPUT LANGUAGE
 // ---------------------------------------------------------------------------
 
-#[derive(Debug)]
-pub enum Program { Letrec(Vec<Letrec>, HashMap<UniqueVar, Location>, Exp) }
-                                       // ^ Stores the var locs for the body 
-
-#[derive(Debug)]
-pub enum Letrec { Entry(Label, HashMap<UniqueVar, Location>, Exp) }
-                               // ^ Stores the var locs for the RHS 
-
-#[derive(Debug)]
-pub enum Exp 
-  { Call(Triv, Vec<Location>)
-  , If(Pred,Box<Exp>,Box<Exp>)
-  , Begin(Vec<Effect>,Box<Exp>)
-  }
-
-#[derive(Debug)]
-pub enum Pred
-  { True
-  , False
-  , Op(Relop,Triv,Triv)
-  , If(Box<Pred>,Box<Pred>,Box<Pred>)
-  , Begin(Vec<Effect>, Box<Pred>)
-  }
-
-#[derive(Debug)]
-pub enum Effect
-  { SetOp(Variable, (Binop, Triv, Triv))
-  , Set(Variable, Triv)
-  , Nop
-  , MSet(Variable, Offset, Triv) // MSet takes a variable, an offset, and a triv; 
-                                 // Variable and Offset MUST be registers, not frame vars
-  , ReturnPoint(Label, Exp, i64) // Label, Expression for return point, frame size for call
-  , If(Pred, Box<Effect>, Box<Effect>)
-  , Begin(Box<Vec<Effect>>, Box<Effect>)
-  }
-
-#[derive(Debug)]
-pub enum Variable 
-  { Loc(Location)
-  , UVar(UniqueVar)
-  }
-
-#[derive(Debug)]
-pub enum Triv 
-  { Var(Variable)
-  , Num(i64) 
-  , Label(Label)
-  , MRef(Variable, Offset)
-  }
-
-#[derive(Debug)]
-pub enum Offset
-  { UVar(UniqueVar)
-  , Reg(String)
-  , Num(i64)
-  }
+// INPUT LANG is the register `alloc_lang`
 
 // ---------------------------------------------------------------------------
 // OUTPUT LANGUAGE
 // ---------------------------------------------------------------------------
 // #[derive(Debug)]
-// pub enum Program { Letrec(Vec<Letrec>, HashMap<UniqueVar, Location>, Exp) }
-//                                        // ^ Stores the var locs for the body 
+// pub enum Program { Letrec(Vec<Letrec>, RegAllocForm, Exp) }
+//                                        // ^ Stores allocation info for the body 
 // 
 // #[derive(Debug)]
-// pub enum Letrec { Entry(Label, HashMap<UniqueVar, Location>, Exp) }
-//                                // ^ Stores the var locs for the RHS 
+// pub enum Letrec 
+// 	{ Entry(RegAllocForm, Exp) }
+// 
+// pub enum RegAllocForm
+// 	{ Allocated(HashMap<UniqueVar, Location>)
+//   , Unallocated(AllocInfo, HashMap<UniqueVar, Location>)
+//   }
+// 
+// pub struct RegAllocInfo 
+//   { locals : Vec<UniqueVar>
+//   , unspillables : Vec<UniqueVar>
+//   , spills : Vec<UniqueVar>
+//   }
 // 
 // #[derive(Debug)]
 // pub enum Exp 
@@ -148,85 +112,106 @@ pub enum Offset
 // #[derive(Debug)]
 // pub enum Offset
 //   { UVar(UniqueVar)
+//   , Reg(String)
 //   , Num(i64)
 //   }
 
 // ---------------------------------------------------------------------------
 // IMPLEMENTATION
 // ---------------------------------------------------------------------------
-pub fn discard_call_lives(input : Program) -> FLProgram {
+pub fn finalize_instruction_selection(input : Program) -> DAIProgram {
   return match input 
-  { Program::Letrec(letrecs, map, body) =>  
-      FLProgram::Letrec( letrecs.into_iter().map(|x| letrec_entry(x)).collect()
-                        , map
+  { Program::Letrec(letrecs, alloc_info, body) =>  
+      DAIProgram::Letrec( letrecs.into_iter().map(|x| letrec_entry(x)).collect()
+                        , alloc_info
                         , exp(body))
   }  
 }
 
-fn letrec_entry(input : Letrec) -> FLLetrec {
+
+fn letrec_entry(input : Letrec) -> DAILetrec {
   return match input 
-  { Letrec::Entry(lbl, map, rhs) => FLLetrec::Entry(lbl, map, exp(rhs)) }
+  { Letrec::Entry(lbl, alloc_info, rhs) => DAILetrec::Entry(lbl, alloc_info, exp(rhs)) }
 } 
 
 macro_rules! mk_box {
   ($e:expr) => [Box::new($e)]
 }
 
-fn exp(input : Exp) -> FLExp {
+fn exp(input : Exp, Location>) -> DAIExp {
   return match input 
-  { Exp::Call(t, call_lives)  => FLExp::Call(triv(t))
-  , Exp::If(test, conseq, alt) => FLExp::If(pred(test), mk_box!(exp(*conseq)), mk_box!(exp(*alt)))
-  , Exp::Begin(effs, body)     => FLExp::Begin(effs.into_iter().map(|e| effect(e)).collect(), mk_box!(exp(*body)))
+  { Exp::Call(t, call_lives)   => DAIExp::Call(triv(t))
+  , Exp::If(test, conseq, alt) => DAIExp::If(pred(test), mk_box!(exp(*conseq)), mk_box!(exp(*alt)))
+  , Exp::Begin(effs, body)     => DAIExp::Begin(effs.into_iter().map(|e| effect(e)).collect(), mk_box!(exp(*body)))
   }
 }
 
-fn pred(input : Pred) -> FLPred {
+fn pred(input : Pred) -> DAIPred {
   return match input 
-  { Pred::True                  => FLPred::True
-  , Pred::False                 => FLPred::False
-  , Pred::Op(op,t1,t2)          => FLPred::Op(op, triv(t1), triv(t2))
-  , Pred::If(test, conseq, alt) => FLPred::If(mk_box!(pred(*test)), mk_box!(pred(*conseq)), mk_box!(pred(*alt)))
-  , Pred::Begin(effs, body)     => FLPred::Begin( effs.into_iter().map(|e| effect(e)).collect(), mk_box!(pred(*body)))
+  { Pred::True                  => DAIPred::True
+  , Pred::False                 => DAIPred::False
+  , Pred::Op(op,t1,t2)          => DAIPred::Op(op, triv(t1), triv(t2))
+  , Pred::If(test, conseq, alt) => DAIPred::If(mk_box!(pred(*test)), mk_box!(pred(*conseq)), mk_box!(pred(*alt)))
+  , Pred::Begin(effs, body)     => DAIPred::Begin( effs.into_iter().map(|e| effect(e)).collect(), mk_box!(pred(*body)))
   }
 }
 
-fn effect(input: Effect) -> FLEffect {
+fn effect(input: Effect, map: &HashMap<UniqueVar, Location>) -> DAIEffect {
   return match input 
-  { Effect::SetOp(l, (op, t1, t2))      => FLEffect::SetOp(var(l), (op, triv(t1), triv(t2)))
-  , Effect::Set(l, t)                   => FLEffect::Set(var(l), triv(t))
-  , Effect::Nop                         => FLEffect::Nop
-  , Effect::MSet(base, off, val)        => FLEffect::MSet(var(base), offset(off), triv(val)) 
-  , Effect::ReturnPoint(lbl, body, off) => FLEffect::ReturnPoint(lbl, exp(body), off)
-  , Effect::If(test, conseq, alt)       => FLEffect::If(pred(test), mk_box!(effect(*conseq)) , mk_box!(effect(*alt)))
-  , Effect::Begin(effs, body)           => FLEffect::Begin( mk_box!((*effs).into_iter().map(|e| effect(e)).collect())
+  { Effect::SetOp(dest, (op, t1, t2))   => DAIEffect::SetOp(triv_to_var(dest), (op, triv(t1), triv(t2)))
+  , Effect::Set(dest, src)              => DAIEffect::Set(triv_to_var(dest), triv(src))
+  , Effect::Nop                         => DAIEffect::Nop
+  , Effect::MSet(base, off, val)        => DAIEffect::MSet(triv_to_var(base), triv_to_offset(off), triv(val)) 
+  , Effect::ReturnPoint(lbl, body, off) => DAIEffect::ReturnPoint(lbl, exp(body), off)
+  , Effect::If(test, conseq, alt)       => DAIEffect::If(pred(test), mk_box!(effect(*conseq)) , mk_box!(effect(*alt)))
+  , Effect::Begin(effs, body)           => DAIEffect::Begin( mk_box!((*effs).into_iter().map(|e| effect(e)).collect())
                                                            , mk_box!(effect(*body)))
   }
 }
 
-fn loc(input : Location) -> Location {
-  return input;
-}
-
-fn var(input : Variable) -> FLVar {
+fn triv_to_var(input : Triv) -> DAIVariable {
   return match input
-  { Variable::Loc(l)   => FLVar::Loc(loc(l))
-  , Variable::UVar(uv) => FLVar::UVar(uv)
+  { Triv::Var(v) => var(v)
+    _            => panic!("Instruction selection has left a non-var triv in a var-only place!");
   }
 }
 
-fn triv(input : Triv) -> FLTriv {
+fn triv_to_offset(input : Triv) -> DAIVariable {
   return match input
-  { Triv::Var(v)          => FLTriv::Var(var(v))
-  , Triv::Num(n)          => FLTriv::Num(n)
-  , Triv::Label(l)        => FLTriv::Label(l)
-  , Triv::MRef(base, off) => FLTriv::MRef(var(base), offset(off))
+  { Triv::Var(Variable::Uvar(uv))              => DAIOffset::UVar(uv)
+  , Triv::Var(Variable::Loc(Location::Reg(s))) => DAIOffset::Reg(s)
+  , Triv::Num(n)                               => DAIOffset::Num(n)
+    _                                          => panic!("Instruction selection has left a non-offset triv in an offset-only place!");
+  }
+}
+
+fn loc(input : Location) -> Loc {
+  return match input
+  { Location::Reg(reg)    => DAILoc::Reg(reg)
+  , Location::FrameVar(n) => DAILoc::FrameVar(n)
+  }
+}
+
+fn var(input : Variable) -> DAIVar {
+  return match input
+  { Variable::Loc(l)   => loc(l)
+  , Variable::UVar(uv) => DAIVar::UVar(uv)
+  }
+}
+
+fn triv(input : Triv) -> DAITriv {
+  return match input
+  { Triv::Var(v)          => DAITriv::Loc(var(v))
+  , Triv::Num(n)          => DAITriv::Num(n)
+  , Triv::Label(l)        => DAITriv::Label(l)
+  , Triv::MRef(base, off) => Triv::MRef(triv_to_var(base), triv_to_offset(off))
   } 
 }
 
-fn offset(input: Offset) -> FLOffset {
+fn offset(input: Offset) -> DAIOffset {
   return match input
-  { Offset::UVar(uv) => FLOffset::UVar(uv)
-  , Offset::Num(n)   => FLOffset::Num(n)
+  { Offset::UVar(uv) => DAIOffset::UVar(uv)
+  , Offset::Num(n)   => DAIOffset::Num(n)
   }
 }
 
@@ -250,8 +235,8 @@ fn mk_loc_reg(s: &str) -> Location {
   return Location::Reg(s.to_string());
 }
 
-fn mk_call(s: &str, lives: Vec<Location>) -> Exp {
-  return Exp::Call(Triv::Label(mk_lbl(s)), lives);
+fn mk_call(s: &str) -> Exp {
+  return Exp::Call(Triv::Label(mk_lbl(s)));
 }
 
 fn mk_lbl(s : &str) -> Label {
@@ -314,14 +299,14 @@ pub fn test1() -> Program {
                                                 , Effect::ReturnPoint(mk_lbl("foo"), 
                                                     Exp::Begin(
                                                        vec![ mk_set(mk_reg("rax"), mk_fv_triv(1)) ]
-                                                      , mk_box!(mk_call("X1", Vec::new())))
+                                                      , mk_box!(mk_call("X1")))
                                                     , 16)
                                                 , mk_set(mk_var("x",0), Triv::MRef(mk_reg("rax"),Offset::Num(10)))]
-                                           , Box::new(mk_call("void", vec![mk_loc_reg("rax")]))))
+                                           , Box::new(mk_call("void"))))
                                        , Box::new(
                                            Exp::Begin(
                                              vec![mk_set_op(mk_reg("rax"), Binop::Plus, as_var_triv(mk_reg("rax")), mk_num_lit(10))]
-                                            , Box::new(mk_call("void", vec![mk_loc_reg("rax"), mk_loc_reg("rbp")])))))
+                                            , Box::new(mk_call("void")))))
                               )
                ]
          , body_map
@@ -329,5 +314,5 @@ pub fn test1() -> Program {
             vec![ mk_set(mk_var("x",2), mk_num_lit(0))
                 , mk_set(mk_var("x",3), mk_num_lit(1))
                 ]
-            , Box::new(mk_call("X1", vec![mk_loc_reg("rax"), mk_loc_reg("rbp")]))));
+            , Box::new(mk_call("X1"))));
 }

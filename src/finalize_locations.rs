@@ -93,6 +93,7 @@ pub enum Triv
 #[derive(Debug)]
 pub enum Offset
   { UVar(UniqueVar)
+  , Reg(String)
   , Num(i64)
   }
 
