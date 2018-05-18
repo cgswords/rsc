@@ -133,7 +133,8 @@ fn assign_frame_vars( cur_locs  : mut HashMap<UniqueVar, Location>
                     , conflicts : &Vec<(UniqueVar, Vec<UniqueVar>)
                     , spills    : &Vec<UniqueVar>) ->
                     mut HashMap<UniqueVar, location> 
-{ 
+{
+    // HASH SETS!
     let used_fvars = conflict_union(conflits);                  
                           
 }
