@@ -19,6 +19,7 @@
 use util::Binop;
 use util::Relop;
 use util::Label;
+use util::X86Loc;
 
 use generate_x86_64::X86Exp;
 use generate_x86_64::X86LangStmt;
@@ -42,20 +43,13 @@ pub enum Exp
 
 #[derive(Debug)]
 pub enum Effect
-  { SetOp(Location, (Binop, Triv, Triv))
-  , Set(Location, Triv)
-  }
-
-#[derive(Debug)]
-pub enum Location 
-  { Reg(String)
-  , DisplaceOperand(String, i64) // base register and offset value
-  , IndexOperand(String, String) // base register and offset register
+  { SetOp(X86Loc, (Binop, Triv, Triv))
+  , Set(X86Loc, Triv)
   }
 
 #[derive(Debug)]
 pub enum Triv 
-  { Loc(Location) 
+  { Loc(X86Loc) 
   , Num(i64) 
   , Label(Label)
   }
@@ -131,11 +125,11 @@ fn effect(input : Effect) -> X86LangStmt {
   }
 }
 
-fn loc(input : Location) -> X86Exp {
+fn loc(input : X86Loc) -> X86Exp {
   return match input 
-  { Location::Reg(s)        => X86Exp::ExpReg(s)
-  , Location::DisplaceOperand(s,n) => X86Exp::ExpDisplace(s,n)
-  , Location::IndexOperand(s,n) => X86Exp::ExpIndex(s,n)
+  { X86Loc::Reg(s)               => X86Exp::ExpReg(s)
+  , X86Loc::DisplaceOperand(s,n) => X86Exp::ExpDisplace(s,n)
+  , X86Loc::IndexOperand(s,n)    => X86Exp::ExpIndex(s,n)
   }
 }
 
@@ -159,8 +153,8 @@ fn label(input : Label) -> X86Exp {
 fn mk_num_lit(n: i64) -> Triv {
   return Triv::Num(n);
 }
-fn mk_reg(s: &str) -> Location {
-  return Location::Reg(s.to_string());
+fn mk_reg(s: &str) -> X86Loc {
+  return X86Loc::Reg(s.to_string());
 }
 fn mk_call(s: &str) -> Exp {
   return Exp::Call(Triv::Label(mk_lbl(s)));
@@ -168,15 +162,15 @@ fn mk_call(s: &str) -> Exp {
 fn mk_lbl(s : &str) -> Label {
   return Label::Label(s.to_string());
 }
-fn mk_set_op(dest: Location, op: Binop, t1 : Triv, t2: Triv) -> Effect {
+fn mk_set_op(dest: X86Loc, op: Binop, t1 : Triv, t2: Triv) -> Effect {
   return Effect::SetOp(dest, (op, t1, t2));
 }
 
-fn mk_loc_triv(l : Location) -> Triv {
+fn mk_loc_triv(l : X86Loc) -> Triv {
   return Triv::Loc(l);
 }
 
-fn mk_set(dest: Location, val: Triv) -> Effect {
+fn mk_set(dest: X86Loc, val: Triv) -> Effect {
   return Effect::Set(dest,val)
 }
 

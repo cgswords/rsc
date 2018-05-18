@@ -17,12 +17,12 @@ use util::Binop;
 use util::Relop;
 use util::unique_label;
 use util::Label;
+use util::X86Loc;
 
 use flatten_program::Program  as FPProgram;
 use flatten_program::Letrec   as FPLetrec;
 use flatten_program::Exp      as FPExp;
 use flatten_program::Effect   as FPEffect;
-use flatten_program::Location as FPLoc;
 use flatten_program::Triv     as FPTriv;
 
 // ---------------------------------------------------------------------------
@@ -52,8 +52,8 @@ pub enum Pred
 
 #[derive(Debug)]
 pub enum Effect
-  { SetOp(Location, (Binop, Triv, Triv))
-  , Set(Location, Triv)
+  { SetOp(X86Loc, (Binop, Triv, Triv))
+  , Set(X86Loc, Triv)
   , Nop
   , ReturnPoint(Label, Exp)
   , If(Pred, Box<Effect>, Box<Effect>)
@@ -61,15 +61,8 @@ pub enum Effect
   }
 
 #[derive(Debug)]
-pub enum Location 
-  { Reg(String)
-  , DisplaceOperand(String, i64) // base register and offset value
-  , IndexOperand(String, String) // base register and offset register
-  }
-
-#[derive(Debug)]
 pub enum Triv 
-  { Loc(Location) 
+  { Loc(X86Loc) 
   , Num(i64) 
   , Label(Label)
   }
@@ -90,18 +83,12 @@ pub enum Triv
 //   }
 // 
 // pub enum Effect
-//   { SetOp(Location, (Binop, Triv, Triv))
-//   , Set(Location, Triv)
-//   }
-// 
-// pub enum Location 
-//   { Reg(String)
-//   , DisplaceOperand(String, i64) // base register and offset value
-//   , IndexOperand(String, String) // base register and offset register
+//   { SetOp(X86Loc, (Binop, Triv, Triv))
+//   , Set(X86Loc, Triv)
 //   }
 // 
 // pub enum Triv 
-//   { Loc(Location) 
+//   { Loc(X86Loc) 
 //   , Num(i64) 
 //   , Label(Label)
 //   }
@@ -261,12 +248,8 @@ fn effect_star(input : Vec<Effect>, last : FPExp, input_bindings : &mut Vec<FPLe
   return (make_begin(tail), bindings);
 }
 
-fn loc(input : Location) -> FPLoc {
-  return match input 
-  { Location::Reg(s)                => FPLoc::Reg(s)
-  , Location::DisplaceOperand(s, n) => FPLoc::DisplaceOperand(s,n)
-  , Location::IndexOperand(s1, s2)  => FPLoc::IndexOperand(s1,s2)
-  }
+fn loc(input : X86Loc) -> X86Loc {
+  return input;
 }
 
 fn triv(input : Triv) -> FPTriv {
@@ -285,8 +268,8 @@ fn mk_num_lit(n: i64) -> Triv {
   return Triv::Num(n);
 }
 
-fn mk_reg(s: &str) -> Location {
-  return Location::Reg(s.to_string());
+fn mk_reg(s: &str) -> X86Loc {
+  return X86Loc::Reg(s.to_string());
 }
 
 fn mk_call(s: &str) -> Exp {
@@ -297,15 +280,15 @@ fn mk_lbl(s : &str) -> Label {
   return Label::Label(s.to_string());
 }
 
-fn mk_set_op(dest: Location, op: Binop, t1 : Triv, t2: Triv) -> Effect {
+fn mk_set_op(dest: X86Loc, op: Binop, t1 : Triv, t2: Triv) -> Effect {
   return Effect::SetOp(dest, (op, t1, t2));
 }
 
-fn mk_loc_triv(l : Location) -> Triv {
+fn mk_loc_triv(l : X86Loc) -> Triv {
   return Triv::Loc(l);
 }
 
-fn mk_set(dest: Location, val: Triv) -> Effect {
+fn mk_set(dest: X86Loc, val: Triv) -> Effect {
   return Effect::Set(dest,val)
 }
 

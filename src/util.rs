@@ -66,4 +66,22 @@ impl Hash for UniqueVar {
   }
 }
 
+// A location is a register or a frame variable. That's all they will ever be.
+// Abstracting this allows us to use the same map through multiple passes
+// without converting the locations from language to language.
+#[derive(Debug, Clone)]
+pub enum Location 
+  { Reg(String)
+  , FrameVar(i64) // offset value
+  }
 
+// An x86_64 location is one of:
+// - a register
+// -a displacement operand (a register and offset value)
+// - an index operand (a pair of registers)
+#[derive(Debug, Clone)]
+pub enum X86Loc 
+  { Reg(String)
+  , DisplaceOperand(String, i64) // base register and offset value
+  , IndexOperand(String, String) // base register and offset register
+  }

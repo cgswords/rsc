@@ -1,4 +1,4 @@
-// PASS    | expose_frame_pointers
+// PASS    | expose_frame_pointer
 // ---------------------------------------------------------------------------
 // USAGE   | Convert return-point forms into return-point forms without 
 //         | frame bumps.
@@ -40,6 +40,7 @@
 use util::Binop;
 use util::Relop;
 use util::Label;
+use util::X86Loc;
 use util::FRAME_PTR_REG;
 
 use expose_memory_operands::Program  as EMOProgram;
@@ -47,7 +48,6 @@ use expose_memory_operands::Letrec   as EMOLetrec;
 use expose_memory_operands::Exp      as EMOExp;
 use expose_memory_operands::Effect   as EMOEffect;
 use expose_memory_operands::Pred     as EMOPred;
-use expose_memory_operands::Location as EMOLoc;
 use expose_memory_operands::Triv     as EMOTriv;
 use expose_memory_operands::Offset   as EMOOffset;
 
@@ -78,8 +78,8 @@ pub enum Pred
 
 #[derive(Debug)]
 pub enum Effect
-  { SetOp(Location, (Binop, Triv, Triv))
-  , Set(Location, Triv)
+  { SetOp(X86Loc, (Binop, Triv, Triv))
+  , Set(X86Loc, Triv)
   , Nop
   , MSet(String, Offset, Triv) // MSet takes a register, an offset, and a triv 
   , ReturnPoint(Label, Exp, i64) // Label, Expression for return point, frame size for call
@@ -88,14 +88,8 @@ pub enum Effect
   }
 
 #[derive(Debug)]
-pub enum Location 
-  { Reg(String)
-  , DisplaceOperand(String, i64) // base register and offset value
-  }
-
-#[derive(Debug)]
 pub enum Triv 
-  { Loc(Location) 
+  { Loc(X86Loc) 
   , Num(i64) 
   , Label(Label)
   , MRef(String, Offset) // Memory reference of a register and an offset
@@ -129,21 +123,21 @@ pub enum Offset
 //   }
 // 
 // pub enum Effect
-//   { SetOp(Location, (Binop, Triv, Triv))
-//   , Set(Location, Triv)
+//   { SetOp(X86Loc, (Binop, Triv, Triv))
+//   , Set(X86Loc, Triv)
 //   , Nop
 //   , ReturnPoint(Label, Exp)
 //   , If(Pred, Box<Effect>, Box<Effect>)
 //   , Begin(Box<Vec<Effect>>, Box<Effect>)
 //   }
 // 
-// pub enum Location 
+// pub enum X86Loc 
 //   { Reg(String)
 //   , DisplaceOperand(String, i64) 
 //   }
 // 
 // pub enum Triv 
-//   { Loc(Location) 
+//   { Loc(X86Loc) 
 //   , Num(i64) 
 //   , Label(Label)
 //   }
@@ -186,8 +180,8 @@ fn pred(input : Pred) -> EMOPred {
   }
 }
 
-fn mk_emo_reg_loc(s : &str) -> EMOLoc {
-  return EMOLoc::Reg(s.to_string());
+fn mk_emo_reg_loc(s : &str) -> X86Loc {
+  return X86Loc::Reg(s.to_string());
 }
 
 fn mk_emo_reg_triv(s : &str) -> EMOTriv {
@@ -217,11 +211,8 @@ fn effect(input: Effect) -> EMOEffect {
   }
 }
 
-fn loc(input : Location) -> EMOLoc {
-  return match input
-  { Location::Reg(reg)                     => EMOLoc::Reg(reg)
-  , Location::DisplaceOperand(reg, offset) => EMOLoc::DisplaceOperand(reg, offset)
-  }
+fn loc(input : X86Loc) -> X86Loc {
+  return input;
 }
 
 fn triv(input : Triv) -> EMOTriv {
@@ -248,8 +239,8 @@ fn mk_num_lit(n: i64) -> Triv {
   return Triv::Num(n);
 }
 
-fn mk_reg(s: &str) -> Location {
-  return Location::Reg(s.to_string());
+fn mk_reg(s: &str) -> X86Loc {
+  return X86Loc::Reg(s.to_string());
 }
 
 fn mk_loc_reg(s: &str) -> Triv {
@@ -264,7 +255,7 @@ fn mk_lbl(s : &str) -> Label {
   return Label::Label(s.to_string());
 }
 
-fn mk_set_op(dest: Location, op: Binop, t1 : Triv, t2: Triv) -> Effect {
+fn mk_set_op(dest: X86Loc, op: Binop, t1 : Triv, t2: Triv) -> Effect {
   return Effect::SetOp(dest, (op, t1, t2));
 }
 
@@ -272,11 +263,11 @@ fn mk_mset(dest: String, offset: Offset, val : Triv) -> Effect {
   return Effect::MSet(dest, offset, val);
 }
 
-fn mk_loc_triv(l : Location) -> Triv {
+fn mk_loc_triv(l : X86Loc) -> Triv {
   return Triv::Loc(l);
 }
 
-fn mk_set(dest: Location, val: Triv) -> Effect {
+fn mk_set(dest: X86Loc, val: Triv) -> Effect {
   return Effect::Set(dest,val)
 }
 

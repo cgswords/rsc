@@ -6,7 +6,9 @@
 // ---------------------------------------------------------------------------
 // DESCRIPTION
 // ---------------------------------------------------------------------------
-// This pass converts every frame variable into a displacement trivial.
+// This pass converts every frame variable into a displacement trivial. The
+// most relevant note is that this is where the compile switches from using
+// the Location form to the X86Loc form for representing locations.
 // 
 // The main intricacy is that return points can allocate additional frame space
 // and then use frame variables in their body. These frame variables need their
@@ -18,6 +20,8 @@
 use util::Binop;
 use util::Relop;
 use util::Label;
+use util::Location;
+use util::X86Loc;
 use util::FRAME_PTR_REG;
 use util::WORD_SIZE;
 
@@ -26,7 +30,6 @@ use expose_frame_pointer::Letrec   as EFPLetrec;
 use expose_frame_pointer::Exp      as EFPExp;
 use expose_frame_pointer::Effect   as EFPEffect;
 use expose_frame_pointer::Pred     as EFPPred;
-use expose_frame_pointer::Location as EFPLoc;
 use expose_frame_pointer::Triv     as EFPTriv;
 use expose_frame_pointer::Offset   as EFPOffset;
 
@@ -64,12 +67,6 @@ pub enum Effect
   , ReturnPoint(Label, Exp, i64) // Label, Expression for return point, frame size for call
   , If(Pred, Box<Effect>, Box<Effect>)
   , Begin(Box<Vec<Effect>>, Box<Effect>)
-  }
-
-#[derive(Debug)]
-pub enum Location 
-  { Reg(String)
-  , FrameVar(i64) // offset value
   }
 
 #[derive(Debug)]
@@ -187,10 +184,10 @@ fn effect(input: Effect, frame_offset: i64) -> EFPEffect {
   }
 }
 
-fn loc(input : Location, frame_offset : i64) -> EFPLoc {
+fn loc(input : Location, frame_offset : i64) -> X86Loc {
   return match input
-  { Location::Reg(reg)    => EFPLoc::Reg(reg)
-  , Location::FrameVar(n) => EFPLoc::DisplaceOperand(FRAME_PTR_REG.to_string(), (n << WORD_SIZE) - frame_offset)
+  { Location::Reg(reg)    => X86Loc::Reg(reg)
+  , Location::FrameVar(n) => X86Loc::DisplaceOperand(FRAME_PTR_REG.to_string(), (n << WORD_SIZE) - frame_offset)
   // We compute the offset by shifting the variable index by the word_size, then
   // subtract the frame offset so that if the FV is bumped, we get to the right
   // place anyway.

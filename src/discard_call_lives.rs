@@ -1,22 +1,16 @@
-// PASS    | finalize_locations
+// PASS    | discard_call_lives
 // ---------------------------------------------------------------------------
-// USAGE   | Converts every variable in the code to a location
+// USAGE   | discard_call_life : discard_call_live::Program ->
+//         |                     finalize_location::Program
 // ---------------------------------------------------------------------------
-// RETURNS | A program without unqiue variables, now using registers and frame 
-//         | vars
+// RETURNS | A program without any call-live variables, removing the lists.
 // ---------------------------------------------------------------------------
 // DESCRIPTION
 // ---------------------------------------------------------------------------
-// This pass discards the location information, using it to replace variables
-// with their (newly assocaited) register and frame locations.
-// 
-// We just scoop up the location forms and do the obvious walk, swapping things
-// out as we see them.
+// This pass discards the call-live information for each procedure invocation,
+// leaving them as Call forms to trivials without additional information.
 //
-// TODO
-// We should also take this moment to crush any useless assignments
-// post-allocation, such as `(set! rax rax)`, by converting them into `nop`
-// instructions. That is a separate pass, though.
+// We do the obvious walk, dropping the information.
 //// ---------------------------------------------------------------------------
 
 use util::Binop;
@@ -28,13 +22,14 @@ use util::mk_uvar;
 
 use std::collections::HashMap;
 
-use expose_frame_variables::Program  as EFVProgram;
-use expose_frame_variables::Letrec   as EFVLetrec;
-use expose_frame_variables::Exp      as EFVExp;
-use expose_frame_variables::Effect   as EFVEffect;
-use expose_frame_variables::Pred     as EFVPred;
-use expose_frame_variables::Triv     as EFVTriv;
-use expose_frame_variables::Offset   as EFVOffset;
+use finalize_locations::Program  as FLProgram;
+use finalize_locations::Letrec   as FLLetrec;
+use finalize_locations::Exp      as FLExp;
+use finalize_locations::Effect   as FLEffect;
+use finalize_locations::Pred     as FLPred;
+use finalize_locations::Triv     as FLTriv;
+use finalize_locations::Offset   as FLOffset;
+use finalize_locations::Variable as FLVar;
 
 // ---------------------------------------------------------------------------
 // INPUT LANGUAGE
@@ -50,7 +45,7 @@ pub enum Letrec { Entry(Label, HashMap<UniqueVar, Location>, Exp) }
 
 #[derive(Debug)]
 pub enum Exp 
-  { Call(Triv)
+  { Call(Triv, Vec<Location>)
   , If(Pred,Box<Exp>,Box<Exp>)
   , Begin(Vec<Effect>,Box<Exp>)
   }
@@ -99,16 +94,22 @@ pub enum Offset
 // ---------------------------------------------------------------------------
 // OUTPUT LANGUAGE
 // ---------------------------------------------------------------------------
-// pub enum Program { Letrec(Vec<Letrec>, Exp) }
+// #[derive(Debug)]
+// pub enum Program { Letrec(Vec<Letrec>, HashMap<UniqueVar, Location>, Exp) }
+//                                        // ^ Stores the var locs for the body 
 // 
-// pub enum Letrec { Entry(Label,Exp) }
+// #[derive(Debug)]
+// pub enum Letrec { Entry(Label, HashMap<UniqueVar, Location>, Exp) }
+//                                // ^ Stores the var locs for the RHS 
 // 
+// #[derive(Debug)]
 // pub enum Exp 
-//   { Call(Triv)
+//   { Call(Triv, Vec<Location>)
 //   , If(Pred,Box<Exp>,Box<Exp>)
 //   , Begin(Vec<Effect>,Box<Exp>)
 //   }
 // 
+// #[derive(Debug)]
 // pub enum Pred
 //   { True
 //   , False
@@ -117,91 +118,87 @@ pub enum Offset
 //   , Begin(Vec<Effect>, Box<Pred>)
 //   }
 // 
+// #[derive(Debug)]
 // pub enum Effect
-//   { SetOp(Location, (Binop, Triv, Triv))
-//   , Set(Location, Triv)
+//   { SetOp(Variable, (Binop, Triv, Triv))
+//   , Set(Variable, Triv)
 //   , Nop
-//   , MSet(String, Offset, Triv) // MSet takes a register, an offset, and a triv 
+//   , MSet(Variable, Offset, Triv) // MSet takes a variable, an offset, and a triv; 
+//                                  // Variable and Offset MUST be registers, not frame vars
 //   , ReturnPoint(Label, Exp, i64) // Label, Expression for return point, frame size for call
 //   , If(Pred, Box<Effect>, Box<Effect>)
 //   , Begin(Box<Vec<Effect>>, Box<Effect>)
 //   }
 // 
-// pub enum Triv 
-//   { Loc(Location) 
-//   , Num(i64) 
-//   , Label(Label)
-//   , MRef(String, Offset) // Memory reference of a register and an offset
+// #[derive(Debug)]
+// pub enum Variable 
+//   { Loc(Location)
+//   , UVar(UniqueVar)
 //   }
 // 
+// #[derive(Debug)]
+// pub enum Triv 
+//   { Var(Variable)
+//   , Num(i64) 
+//   , Label(Label)
+//   , MRef(Variable, Offset)
+//   }
+// 
+// #[derive(Debug)]
 // pub enum Offset
-//   { Reg(String)
+//   { UVar(UniqueVar)
 //   , Num(i64)
 //   }
 
 // ---------------------------------------------------------------------------
 // IMPLEMENTATION
 // ---------------------------------------------------------------------------
-pub fn finalize_locations(input : Program) -> EFVProgram {
+pub fn discard_call_lives(input : Program) -> FLProgram {
   return match input 
   { Program::Letrec(letrecs, map, body) =>  
-      EFVProgram::Letrec( letrecs.into_iter().map(|x| letrec_entry(x)).collect()
-                        , exp(body, &map))
+      FLProgram::Letrec( letrecs.into_iter().map(|x| letrec_entry(x)).collect()
+                        , map
+                        , exp(body))
   }  
 }
 
-fn letrec_entry(input : Letrec) -> EFVLetrec {
+fn letrec_entry(input : Letrec) -> FLLetrec {
   return match input 
-  { Letrec::Entry(lbl,map, rhs) => EFVLetrec::Entry(lbl, exp(rhs, &map)) }
+  { Letrec::Entry(lbl, map, rhs) => FLLetrec::Entry(lbl, map, exp(rhs)) }
 } 
 
 macro_rules! mk_box {
   ($e:expr) => [Box::new($e)]
 }
 
-fn exp(input : Exp, map: &HashMap<UniqueVar, Location>) -> EFVExp {
+fn exp(input : Exp) -> FLExp {
   return match input 
-  { Exp::Call(t)               => EFVExp::Call(triv(t, map))
-  , Exp::If(test, conseq, alt) => EFVExp::If( pred(test,           map)
-                                            , mk_box!(exp(*conseq, map))
-                                            , mk_box!(exp(*alt,    map)))
-  , Exp::Begin(effs, body)     => EFVExp::Begin( effs.into_iter().map(|e| effect(e, map)).collect()
-                                               , mk_box!(exp(*body, map)))
+  { Exp::Call(t, call_lives)  => FLExp::Call(triv(t))
+  , Exp::If(test, conseq, alt) => FLExp::If(pred(test), mk_box!(exp(*conseq)), mk_box!(exp(*alt)))
+  , Exp::Begin(effs, body)     => FLExp::Begin(effs.into_iter().map(|e| effect(e)).collect(), mk_box!(exp(*body)))
   }
 }
 
-fn pred(input : Pred, map: &HashMap<UniqueVar, Location>) -> EFVPred {
+fn pred(input : Pred) -> FLPred {
   return match input 
-  { Pred::True                  => EFVPred::True
-  , Pred::False                 => EFVPred::False
-  , Pred::Op(op,t1,t2)          => EFVPred::Op(op, triv(t1, map), triv(t2, map))
-  , Pred::If(test, conseq, alt) => EFVPred::If(mk_box!(pred(*test,   map)),
-                                               mk_box!(pred(*conseq, map)),
-                                               mk_box!(pred(*alt,    map)))
-  , Pred::Begin(effs, body)     => EFVPred::Begin( effs.into_iter().map(|e| effect(e, map)).collect()
-                                                 , mk_box!(pred(*body, map)))
+  { Pred::True                  => FLPred::True
+  , Pred::False                 => FLPred::False
+  , Pred::Op(op,t1,t2)          => FLPred::Op(op, triv(t1), triv(t2))
+  , Pred::If(test, conseq, alt) => FLPred::If(mk_box!(pred(*test)), mk_box!(pred(*conseq)), mk_box!(pred(*alt)))
+  , Pred::Begin(effs, body)     => FLPred::Begin( effs.into_iter().map(|e| effect(e)).collect(), mk_box!(pred(*body)))
   }
 }
 
-fn effect(input: Effect, map: &HashMap<UniqueVar, Location>) -> EFVEffect {
+fn effect(input: Effect) -> FLEffect {
   return match input 
-  { Effect::SetOp(l, (op, t1, t2))      => EFVEffect::SetOp(var(l, map), (op, triv(t1, map), triv(t2, map)))
-  , Effect::Set(l, t)                   => EFVEffect::Set(var(l, map), triv(t, map))
-  , Effect::Nop                         => EFVEffect::Nop
-  , Effect::MSet(base, off, val)        => 
-    { let new_base = var(base, map);
-      if let Location::Reg(s) = new_base {
-        EFVEffect::MSet(s, offset(off, map), triv(val, map))
-      } else {
-        panic!("Tried to place an ref base on the stack.");
-      }
-    }
-  , Effect::ReturnPoint(lbl, body, off) => EFVEffect::ReturnPoint(lbl, exp(body, map), off)
-  , Effect::If(test, conseq, alt)       => EFVEffect::If( pred(test, map)
-                                                        , mk_box!(effect(*conseq, map))
-                                                        , mk_box!(effect(*alt, map)))
-  , Effect::Begin(effs, body)           => EFVEffect::Begin( mk_box!((*effs).into_iter().map(|e| effect(e, map)).collect())
-                                                           , mk_box!(effect(*body, map)))
+  { Effect::SetOp(l, (op, t1, t2))      => FLEffect::SetOp(var(l), (op, triv(t1), triv(t2)))
+  , Effect::Set(l, t)                   => FLEffect::Set(var(l), triv(t))
+  , Effect::Nop                         => FLEffect::Nop
+  , Effect::MSet(base, off, val)        => FLEffect::MSet(var(base), offset(off), triv(val)) 
+  , Effect::ReturnPoint(lbl, body, off) => FLEffect::ReturnPoint(lbl, exp(body), off)
+  , Effect::If(test, conseq, alt)       => FLEffect::If(pred(test), mk_box!(effect(*conseq)) , mk_box!(effect(*alt)))
+  , Effect::Begin(effs, body)           => FLEffect::Begin( mk_box!((*effs).into_iter().map(|e| effect(e)).collect())
+                                                           , mk_box!(effect(*body)))
   }
 }
 
@@ -209,46 +206,26 @@ fn loc(input : Location) -> Location {
   return input;
 }
 
-fn uvar(uvar: UniqueVar, map: &HashMap<UniqueVar, Location>) -> Location {
-  if let Some(location) = map.get(&uvar) {
-    let thisLoc : Location = location.clone();
-    loc(thisLoc)
-  } else {
-    panic!("Failed to find location for uvar: {:?}", uvar);
-  } 
-}
-
-fn var(input : Variable, map: &HashMap<UniqueVar, Location>) -> Location {
+fn var(input : Variable) -> FLVar {
   return match input
-  { Variable::Loc(l)   => loc(l)
-  , Variable::UVar(uv) => uvar(uv, map) 
+  { Variable::Loc(l)   => FLVar::Loc(loc(l))
+  , Variable::UVar(uv) => FLVar::UVar(uv)
   }
 }
 
-fn triv(input : Triv, map: &HashMap<UniqueVar, Location>) -> EFVTriv {
+fn triv(input : Triv) -> FLTriv {
   return match input
-  { Triv::Var(v)          => EFVTriv::Loc(var(v, map))
-  , Triv::Num(n)          => EFVTriv::Num(n)
-  , Triv::Label(l)        => EFVTriv::Label(l)
-  , Triv::MRef(base, off) => 
-    { let new_base = var(base, map);
-      if let Location::Reg(s) = new_base {
-        EFVTriv::MRef(s, offset(off, map))
-      } else {
-        panic!("Tried to place an ref base on the stack.")
-      }
-    }
+  { Triv::Var(v)          => FLTriv::Var(var(v))
+  , Triv::Num(n)          => FLTriv::Num(n)
+  , Triv::Label(l)        => FLTriv::Label(l)
+  , Triv::MRef(base, off) => FLTriv::MRef(var(base), offset(off))
   } 
 }
 
-fn offset(input: Offset, map: &HashMap<UniqueVar, Location>) -> EFVOffset {
+fn offset(input: Offset) -> FLOffset {
   return match input
-  { Offset::UVar(uv) => if let Location::Reg(s) = uvar(uv, map) {
-                          EFVOffset::Reg(s)
-                        } else {
-                          panic!("Tried to place an offset variable on the stack.")
-                        }
-  , Offset::Num(n)   => EFVOffset::Num(n)
+  { Offset::UVar(uv) => FLOffset::UVar(uv)
+  , Offset::Num(n)   => FLOffset::Num(n)
   }
 }
 
@@ -272,8 +249,8 @@ fn mk_loc_reg(s: &str) -> Location {
   return Location::Reg(s.to_string());
 }
 
-fn mk_call(s: &str) -> Exp {
-  return Exp::Call(Triv::Label(mk_lbl(s)));
+fn mk_call(s: &str, lives: Vec<Location>) -> Exp {
+  return Exp::Call(Triv::Label(mk_lbl(s)), lives);
 }
 
 fn mk_lbl(s : &str) -> Label {
@@ -336,14 +313,14 @@ pub fn test1() -> Program {
                                                 , Effect::ReturnPoint(mk_lbl("foo"), 
                                                     Exp::Begin(
                                                        vec![ mk_set(mk_reg("rax"), mk_fv_triv(1)) ]
-                                                      , mk_box!(mk_call("X1")))
+                                                      , mk_box!(mk_call("X1", Vec::new())))
                                                     , 16)
                                                 , mk_set(mk_var("x",0), Triv::MRef(mk_reg("rax"),Offset::Num(10)))]
-                                           , Box::new(mk_call("void"))))
+                                           , Box::new(mk_call("void", vec![mk_loc_reg("rax")]))))
                                        , Box::new(
                                            Exp::Begin(
                                              vec![mk_set_op(mk_reg("rax"), Binop::Plus, as_var_triv(mk_reg("rax")), mk_num_lit(10))]
-                                            , Box::new(mk_call("void")))))
+                                            , Box::new(mk_call("void", vec![mk_loc_reg("rax"), mk_loc_reg("rbp")])))))
                               )
                ]
          , body_map
@@ -351,5 +328,5 @@ pub fn test1() -> Program {
             vec![ mk_set(mk_var("x",2), mk_num_lit(0))
                 , mk_set(mk_var("x",3), mk_num_lit(1))
                 ]
-            , Box::new(mk_call("X1"))));
+            , Box::new(mk_call("X1", vec![mk_loc_reg("rax"), mk_loc_reg("rbp")]))));
 }
