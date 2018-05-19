@@ -3,11 +3,12 @@ use string_interner::DefaultStringInterner;
 use string_interner::StringInterner;
 
 use std::fmt;
+use std::sync::Mutex;
 
 // use std::hash::{Hash, Hasher};
 
 lazy_static! {
-  static ref INTERNER : StringInterner<usize> = DefaultStringInterner::default();
+  static ref INTERNER : Mutex<StringInterner<usize>> = Mutex::new(DefaultStringInterner::default());
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Hash)]
@@ -15,20 +16,24 @@ pub struct Ident { intern_ref : usize }
 
 impl Ident {
   pub fn from_str(input : &str) -> Ident {
-    let new_ref = INTERNER.get_or_intern(input);
+    let new_ref = INTERNER.lock().unwrap().get_or_intern(input);
     return Ident { intern_ref : new_ref };
   }
 
   pub fn to_string(&self) -> String {
-    if let Some(s) = INTERNER.resolve(self.intern_ref) {
+    if let Some(s) = INTERNER.lock().unwrap().resolve(self.intern_ref) {
       return s.to_string();
     } else {
       panic!("Tried to look up an uninterned ident. HOW?!");
     }
   }
 
-  pub fn lookup(&self) -> Option<&str> {
-    INTERNER.resolve(self.intern_ref)
+  pub fn lookup<'a>(&self) -> Option<String> {
+    if let Some(s) = INTERNER.lock().unwrap().resolve(self.intern_ref) {
+      Some(s.to_owned())
+    } else {
+      panic!("Tried to look up an uninterned ident. HOW?!");
+    }
   }
 }
 

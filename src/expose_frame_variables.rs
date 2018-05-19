@@ -188,7 +188,7 @@ fn effect(input: Effect, frame_offset: i64) -> EFPEffect {
 fn loc(input : Location, frame_offset : i64) -> X86Loc {
   return match input
   { Location::Reg(reg)    => X86Loc::Reg(reg)
-  , Location::FrameVar(n) => X86Loc::DisplaceOperand(FRAME_PTR_REG, (n << WORD_SIZE) - frame_offset)
+  , Location::FrameVar(n) => X86Loc::DisplaceOperand(Ident::from_str(FRAME_PTR_REG), (n << WORD_SIZE) - frame_offset)
   // We compute the offset by shifting the variable index by the word_size, then
   // subtract the frame offset so that if the FV is bumped, we get to the right
   // place anyway.

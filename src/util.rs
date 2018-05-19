@@ -1,4 +1,3 @@
-
 pub use interner::Ident;
 use std::hash::{Hash, Hasher};
 
@@ -35,18 +34,21 @@ impl Label {
   }
 }
 
-pub const FRAME_PTR_REG   : Ident = Ident::from_str("rbp");
-pub const ALLOC_PTR_REG   : Ident = Ident::from_str("r12");
-pub const RETURN_ADDR_REG : Ident = Ident::from_str("r15");
-pub const RETURN_VAL_REG  : Ident = Ident::from_str("rax");
+pub static FRAME_PTR_REG   : &str = "rbp";
+pub static ALLOC_PTR_REG   : &str = "r12";
+pub static RETURN_ADDR_REG : &str = "r15";
+pub static RETURN_VAL_REG  : &str = "rax";
 
 // We're addressing each word, and using 64-bit values,
 // so we need to shift by 8
 pub const WORD_SIZE       : i64  = 3; 
 
+
+// We need a way to make new, unique labels. We do this with a static, mutable
+// counter.
 static mut LABEL_COUNTER : i64 = 0;
 
-pub fn next_lbl_cnt () -> String {
+fn next_lbl_cnt () -> String {
   unsafe {
     let output : String = LABEL_COUNTER.to_string();
     LABEL_COUNTER += 1;
@@ -60,29 +62,23 @@ pub fn unique_label(label: &str) -> Label {
     return Label::new(Ident::from_str(&label_str));
 }
 
-// A variable is a string and number, so that we can number them easily for
-// uniqueness. The ids _must_ be unique: it's a large part of how we hash 'em.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct UniqueVar
-{ pub name : Ident
-, pub id : i64
-}
 
-impl UniqueVar {
-  pub fn new(new_name : &str, new_id : i64) -> UniqueVar {
-    UniqueVar { name : Ident::from_str(new_name), id : new_id }
+// We also need a way to make new, unique indentifiers. We also do this with a
+// static, mutable counter.
+static mut UVAR_COUNTER : i64 = 0;
+
+fn next_uvar_cnt () -> String {
+  unsafe {
+    let output : String = LABEL_COUNTER.to_string();
+    LABEL_COUNTER += 1;
+    return output;
   }
 }
 
-pub fn mk_uvar(new_name : &str, new_id : i64) -> UniqueVar {
-  UniqueVar::new(new_name, new_id)
-}
-
-impl Hash for UniqueVar {
-  fn hash<H: Hasher>(&self, state: &mut H) {
-    self.name.hash(state);
-    self.id.hash(state);
-  }
+pub fn mk_uvar(var: &str) -> Ident {
+    let mut var_str = var.to_string();
+    var_str.push_str(&next_uvar_cnt());
+    return Label::new(Ident::from_str(&var_str));
 }
 
 // A location is a register or a frame variable. That's all they will ever be.

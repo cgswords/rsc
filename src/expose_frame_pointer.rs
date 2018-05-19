@@ -194,18 +194,20 @@ fn mk_emo_num_lit(n : i64) -> EMOTriv {
 }
 
 fn effect(input: Effect) -> EMOEffect {
+  let frame_ptr_reg = Ident::from_str(FRAME_PTR_REG);
+
   return match input 
   { Effect::SetOp(l, (op, t1, t2)) => EMOEffect::SetOp(loc(l), (op, triv(t1), triv(t2)))
   , Effect::Set(l, t)              => EMOEffect::Set(loc(l), triv(t))
   , Effect::Nop                    => EMOEffect::Nop
   , Effect::MSet(base,off,val)     => EMOEffect::MSet(base, offset(off), triv(val))
   , Effect::ReturnPoint(lbl, body, new_offset) => 
-      EMOEffect::Begin(mk_box!(vec![ EMOEffect::SetOp( mk_emo_reg_loc(FRAME_PTR_REG)
-                                                     , (Binop::Plus, mk_emo_reg_triv(FRAME_PTR_REG), mk_emo_num_lit(new_offset)))
+      EMOEffect::Begin(mk_box!(vec![ EMOEffect::SetOp( mk_emo_reg_loc(frame_ptr_reg)
+                                                     , (Binop::Plus, mk_emo_reg_triv(frame_ptr_reg), mk_emo_num_lit(new_offset)))
                                    , EMOEffect::ReturnPoint(lbl, exp(body))
                                    ])
-                      , mk_box!( EMOEffect::SetOp(mk_emo_reg_loc(FRAME_PTR_REG)
-                               , (Binop::Minus, mk_emo_reg_triv(FRAME_PTR_REG), mk_emo_num_lit(new_offset))))) 
+                      , mk_box!( EMOEffect::SetOp(mk_emo_reg_loc(frame_ptr_reg)
+                               , (Binop::Minus, mk_emo_reg_triv(frame_ptr_reg), mk_emo_num_lit(new_offset))))) 
   , Effect::If(test, conseq, alt)  => EMOEffect::If(pred(test), mk_box!(effect(*conseq)), mk_box!(effect(*alt)))
   , Effect::Begin(effs, body)      => EMOEffect::Begin( mk_box!((*effs).into_iter().map(|e| effect(e)).collect())
                                                       , mk_box!(effect(*body)))
