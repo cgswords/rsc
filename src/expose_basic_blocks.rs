@@ -17,6 +17,7 @@ use util::Binop;
 use util::Relop;
 use util::unique_label;
 use util::Label;
+use util::Ident;
 use util::X86Loc;
 
 use flatten_program::Program  as FPProgram;
@@ -74,8 +75,6 @@ pub enum Triv
 // 
 // pub enum Letrec { Entry(Label,Exp) }
 // 
-// pub enum Label { Label(String) }
-// 
 // pub enum Exp 
 //   { Call(Triv)
 //   , If(Relop,Triv,Triv,Label,Label)
@@ -132,7 +131,7 @@ fn exp(input : Exp) -> (FPExp, Vec<FPLetrec>) {
     { let con_label = unique_label("C");
       let alt_label = unique_label("A");
 
-      let (pred_body, mut pred_bindings) = pred(test, con_label.clone(), alt_label.clone());
+      let (pred_body, mut pred_bindings) = pred(test, con_label, alt_label);
       let (con_body, mut con_bindings) = exp(*conseq);
       let (alt_body, mut alt_bindings) = exp(*alt);
 
@@ -171,8 +170,8 @@ fn pred(input : Pred, con_lbl : Label, alt_lbl : Label) -> (FPExp, Vec<FPLetrec>
     { let new_con_label = unique_label("C");
       let new_alt_label = unique_label("A");
 
-      let (pred_body, mut pred_bindings) = pred(*test, new_con_label.clone(), new_alt_label.clone());
-      let (con_body, mut con_bindings) = pred(*conseq, con_lbl.clone(), alt_lbl.clone());
+      let (pred_body, mut pred_bindings) = pred(*test, new_con_label, new_alt_label);
+      let (con_body, mut con_bindings) = pred(*conseq, con_lbl, alt_lbl);
       let (alt_body, mut alt_bindings) = pred(*alt, con_lbl, alt_lbl);
 
       let mut output_letrec = Vec::new();
@@ -222,10 +221,10 @@ fn effect_star(input : Vec<Effect>, last : FPExp, input_bindings : &mut Vec<FPLe
         { let new_con_label = unique_label("C");
           let new_alt_label = unique_label("A");
           let new_phi_label = unique_label("PHI");
-          let (pred_body, mut pred_bindings) = pred(test, new_con_label.clone(), new_alt_label.clone());
+          let (pred_body, mut pred_bindings) = pred(test, new_con_label, new_alt_label);
 
-          let (con_body, mut con_bindings) = effect_star(vec![*conseq], mk_fp_call(new_phi_label.clone()), &mut Vec::new());
-          let (alt_body, mut alt_bindings) = effect_star(vec![*alt], mk_fp_call(new_phi_label.clone()), &mut Vec::new());
+          let (con_body, mut con_bindings) = effect_star(vec![*conseq], mk_fp_call(new_phi_label), &mut Vec::new());
+          let (alt_body, mut alt_bindings) = effect_star(vec![*alt], mk_fp_call(new_phi_label), &mut Vec::new());
 
           bindings.append(&mut pred_bindings);
           bindings.push(FPLetrec::Entry(new_con_label, make_begin(con_body)));
@@ -269,7 +268,7 @@ fn mk_num_lit(n: i64) -> Triv {
 }
 
 fn mk_reg(s: &str) -> X86Loc {
-  return X86Loc::Reg(s.to_string());
+  return X86Loc::Reg(Ident::from_str(s));
 }
 
 fn mk_call(s: &str) -> Exp {
@@ -277,7 +276,7 @@ fn mk_call(s: &str) -> Exp {
 }
 
 fn mk_lbl(s : &str) -> Label {
-  return Label::Label(s.to_string());
+  return Label::new(Ident::from_str(s));
 }
 
 fn mk_set_op(dest: X86Loc, op: Binop, t1 : Triv, t2: Triv) -> Effect {

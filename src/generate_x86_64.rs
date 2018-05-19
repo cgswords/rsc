@@ -7,6 +7,7 @@
 
 use util::Binop;
 use util::Relop;
+use util::Ident;
 use util::FRAME_PTR_REG;
 use util::ALLOC_PTR_REG;
 use util::RETURN_ADDR_REG;
@@ -16,16 +17,16 @@ use util::RETURN_ADDR_REG;
 // ---------------------------------------------------------------------------
 #[derive(PartialEq,Eq,Debug)]
 pub enum X86Exp 
-  { ExpLabel(String)
-  , ExpReg(String)
-  , ExpDisplace(String, i64) // base register and offset value
-  , ExpIndex(String, String) // base register and offset register
+  { ExpLabel(Ident)
+  , ExpReg(Ident)
+  , ExpDisplace(Ident, i64) // base register and offset value
+  , ExpIndex(Ident, Ident) // base register and offset register
   , ExpNum(i64)
   }
 
 #[derive(Debug)]
 pub enum X86LangStmt 
-  { Lbl(String)
+  { Lbl(Ident)
   , SetOp(X86Exp, (Binop, X86Exp, X86Exp))
   , SetLoad(X86Exp, X86Exp)
   , IfNot(Relop, X86Exp, X86Exp, X86Exp)
@@ -73,7 +74,7 @@ fn lookup_relop(op : Relop, negated : bool) -> String {
 
 fn emit_exp (input: X86Exp) -> String {
   return match input  
-  { X86Exp::ExpLabel(s) => format!("{}(%rip)",s) 
+  { X86Exp::ExpLabel(s) => format!("{}(%rip)", s) 
   , X86Exp::ExpReg(s) => format!("%{}", s)
   , X86Exp::ExpDisplace(reg, offset) => format!("{}(%{})",offset.to_string(),reg) 
   , X86Exp::ExpIndex(reg, index) => format!("(%{}, %{})", reg, index)
@@ -103,7 +104,7 @@ fn emit_jump(output: &mut String, op : &String, arg : X86Exp) {
   output.push_str(op);
   output.push_str(" ");
   match arg
-  { X86Exp::ExpLabel(lbl) => { output.push_str(&lbl); }
+  { X86Exp::ExpLabel(lbl) => { output.push_str(&lbl.to_string()); }
   , _ => { output.push('*'); 
            output.push_str(&emit_exp(arg));
          }
@@ -155,7 +156,7 @@ fn statement(input : X86LangStmt) -> String {
 
   let mut output = String::new();
   match input 
-  { X86LangStmt::Lbl(s) => { emit_label(&mut output, &s); }
+  { X86LangStmt::Lbl(s) => { emit_label(&mut output, &s.to_string()); }
   , X86LangStmt::SetOp(dest, (binop, _dest2, source)) =>
       // should probably ensure dest == dest2
       { emit_binop(&mut output, &lookup_binop(binop), &emit_exp(dest), &emit_exp(source)); }
@@ -189,27 +190,34 @@ fn mk_num_lit(n: i64) -> X86Exp {
   return X86Exp::ExpNum(n);
 }
 fn mk_reg(s: &str) -> X86Exp {
-  return X86Exp::ExpReg(s.to_string());
+  return X86Exp::ExpReg(Ident::from_str(s));
 }
 fn mk_exp_lbl(s: &str) -> X86Exp {
-  return X86Exp::ExpLabel(s.to_string());
+  return X86Exp::ExpLabel(Ident::from_str(s));
 }
 fn mk_lbl(s : &str) -> X86LangStmt {
-  return X86LangStmt::Lbl(s.to_string());
+  return X86LangStmt::Lbl(Ident::from_str(s));
 }
 
 pub fn test1() -> Program {
+
+  let rax = Ident::from_str("rax");
+  let r8 = Ident::from_str("r8");
+  let r9 = Ident::from_str("r9");
+  let X2 = Ident::from_str("X2");
+  let X3 = Ident::from_str("X3");
+
   return Program::Program(
      vec![ X86LangStmt::SetLoad(mk_reg("r9"), mk_num_lit(0))    
          , X86LangStmt::SetLoad(mk_reg("r8"), mk_num_lit(1))    
          , X86LangStmt::Jump(mk_exp_lbl("X1"))
          , mk_lbl("X2")
-         , X86LangStmt::SetOp(X86Exp::ExpReg("rax".to_string()),(Binop::Plus,X86Exp::ExpReg("rax".to_string()),X86Exp::ExpNum(10)))
-         , X86LangStmt::Jump(X86Exp::ExpLabel("X3".to_string()))
+         , X86LangStmt::SetOp(X86Exp::ExpReg(rax),(Binop::Plus,X86Exp::ExpReg(rax),X86Exp::ExpNum(10)))
+         , X86LangStmt::Jump(X86Exp::ExpLabel(X3))
          , mk_lbl("X1")
-         , X86LangStmt::If(Relop::LT,X86Exp::ExpReg("r9".to_string()),X86Exp::ExpReg("r8".to_string()),X86Exp::ExpLabel("X2".to_string()))
-         , X86LangStmt::Jump(X86Exp::ExpLabel("X3".to_string()))
+         , X86LangStmt::If(Relop::LT,X86Exp::ExpReg(r9),X86Exp::ExpReg(r8),X86Exp::ExpLabel(X2))
+         , X86LangStmt::Jump(X86Exp::ExpLabel(X3))
          , mk_lbl("X3")
-         , X86LangStmt::SetOp(X86Exp::ExpReg("rax".to_string()),(Binop::Plus,X86Exp::ExpReg("rax".to_string()),X86Exp::ExpNum(10)))
+         , X86LangStmt::SetOp(X86Exp::ExpReg(rax),(Binop::Plus,X86Exp::ExpReg(rax),X86Exp::ExpNum(10)))
          ]);
 }

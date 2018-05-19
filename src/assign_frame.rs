@@ -32,6 +32,7 @@ use alloc_lang::Triv;
 use alloc_lang::Offset;
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 // ---------------------------------------------------------------------------
 // INPUT / OUTPUT LANGUAGE
@@ -122,8 +123,16 @@ fn letrec_entry(input : Letrec) -> Letrec {
   { Letrec::Entry(lbl, alloc_info, rhs) => Letrec::Entry(lbl, alloc_info, exp(rhs)) }
 } 
 
+fn get_frame_index(input: &Location) -> i64 {
+  match input
+  { Location::Reg(_)      => 0
+  , Location::FrameVar(n) => n
+  }
+}
+
 fn conflict_union(conflicts : &Vec<(UniqueVar, Vec<UniqueVar>)) -> Vec<UniqueVar>
 {
+  let mut vars : HashSet
   // FIXME Implement this, and move it into alloc_lang probably
   return Vec::new();
   

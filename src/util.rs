@@ -1,4 +1,5 @@
 
+pub use interner::Ident;
 use std::hash::{Hash, Hasher};
 
 #[derive(Debug)]
@@ -19,13 +20,25 @@ pub enum Relop
   , GT
   }
 
-#[derive(Debug,Clone)]
-pub enum Label { Label(String) }
+#[derive(Debug,Clone, Copy)]
+pub struct Label {
+  label : Ident  
+}
 
-pub const FRAME_PTR_REG   : &str = "rbp";
-pub const ALLOC_PTR_REG   : &str = "r12";
-pub const RETURN_ADDR_REG : &str = "r15";
-pub const RETURN_VAL_REG  : &str = "rax";
+impl Label {
+  pub fn new(id : Ident) -> Label {
+    Label { label : id }
+  }
+  
+  pub fn to_id(&self) -> Ident {
+    self.label 
+  }
+}
+
+pub const FRAME_PTR_REG   : Ident = Ident::from_str("rbp");
+pub const ALLOC_PTR_REG   : Ident = Ident::from_str("r12");
+pub const RETURN_ADDR_REG : Ident = Ident::from_str("r15");
+pub const RETURN_VAL_REG  : Ident = Ident::from_str("rax");
 
 // We're addressing each word, and using 64-bit values,
 // so we need to shift by 8
@@ -44,19 +57,25 @@ pub fn next_lbl_cnt () -> String {
 pub fn unique_label(label: &str) -> Label {
     let mut label_str = label.to_string();
     label_str.push_str(&next_lbl_cnt());
-    return Label::Label(label_str);
+    return Label::new(Ident::from_str(&label_str));
 }
 
 // A variable is a string and number, so that we can number them easily for
 // uniqueness. The ids _must_ be unique: it's a large part of how we hash 'em.
-#[derive(Debug, PartialEq, Eq)]
-pub struct UniqueVar 
-{ pub name : String
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct UniqueVar
+{ pub name : Ident
 , pub id : i64
 }
 
+impl UniqueVar {
+  pub fn new(new_name : &str, new_id : i64) -> UniqueVar {
+    UniqueVar { name : Ident::from_str(new_name), id : new_id }
+  }
+}
+
 pub fn mk_uvar(new_name : &str, new_id : i64) -> UniqueVar {
-  return UniqueVar { name : new_name.to_string(), id : new_id };
+  UniqueVar::new(new_name, new_id)
 }
 
 impl Hash for UniqueVar {
@@ -70,8 +89,8 @@ impl Hash for UniqueVar {
 // Abstracting this allows us to use the same map through multiple passes
 // without converting the locations from language to language.
 #[derive(Debug, Clone)]
-pub enum Location 
-  { Reg(String)
+pub enum Location
+  { Reg(Ident)
   , FrameVar(i64) // offset value
   }
 
@@ -81,7 +100,7 @@ pub enum Location
 // - an index operand (a pair of registers)
 #[derive(Debug, Clone)]
 pub enum X86Loc 
-  { Reg(String)
-  , DisplaceOperand(String, i64) // base register and offset value
-  , IndexOperand(String, String) // base register and offset register
+  { Reg(Ident)
+  , DisplaceOperand(Ident, i64) // base register and offset value
+  , IndexOperand(Ident, Ident) // base register and offset register
   }

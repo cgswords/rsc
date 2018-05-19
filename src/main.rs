@@ -1,4 +1,12 @@
+extern crate string_interner;
+
+
+#[macro_use(lazy_static,__lazy_static_create,__lazy_static_internal)]
+extern crate lazy_static;
+
 mod util;
+mod interner;
+
 //use util::Binop;
 //use util::Relop;
 

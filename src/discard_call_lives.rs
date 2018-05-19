@@ -19,6 +19,7 @@ use util::Label;
 use util::UniqueVar;
 use util::Location;
 use util::mk_uvar;
+use util::Ident;
 
 use std::collections::HashMap;
 
@@ -88,7 +89,7 @@ pub enum Triv
 #[derive(Debug)]
 pub enum Offset
   { UVar(UniqueVar)
-  , Reg(String)
+  , Reg(Ident)
   , Num(i64)
   }
 
@@ -148,6 +149,7 @@ pub enum Offset
 // #[derive(Debug)]
 // pub enum Offset
 //   { UVar(UniqueVar)
+//   , Reg(Ident)
 //   , Num(i64)
 //   }
 
@@ -226,6 +228,7 @@ fn triv(input : Triv) -> FLTriv {
 fn offset(input: Offset) -> FLOffset {
   return match input
   { Offset::UVar(uv) => FLOffset::UVar(uv)
+  , Offset::Reg(r)   => FLOffset::Reg(r)
   , Offset::Num(n)   => FLOffset::Num(n)
   }
 }
@@ -247,7 +250,7 @@ fn mk_reg(s: &str) -> Variable {
 }
 
 fn mk_loc_reg(s: &str) -> Location {
-  return Location::Reg(s.to_string());
+  return Location::Reg(Ident::from_str(s));
 }
 
 fn mk_call(s: &str, lives: Vec<Location>) -> Exp {
@@ -255,7 +258,7 @@ fn mk_call(s: &str, lives: Vec<Location>) -> Exp {
 }
 
 fn mk_lbl(s : &str) -> Label {
-  return Label::Label(s.to_string());
+  return Label::new(Ident::from_str(s));
 }
 
 fn mk_set_op(dest: Variable, op: Binop, t1 : Triv, t2: Triv) -> Effect {
@@ -271,7 +274,7 @@ fn mk_loc_triv(l : Location) -> Triv {
 }
 
 fn mk_var(s : &str, index : i64) -> Variable {
-  return Variable::UVar(UniqueVar { name : s.to_string(), id : index });
+  return Variable::UVar(UniqueVar { name : Ident::from_str(s), id : index });
 }
 
 fn mk_var_triv(s : &str, index : i64) -> Triv {

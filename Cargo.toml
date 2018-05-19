@@ -1,5 +1,9 @@
 [package]
 
-name = "RSC"
+name = "rusc"
 version = "0.0.1"
 authors = [ "Cameron Swords <cameronswords@gmail.com>" ]
+
+[dependencies]
+string-interner = "0.6.3"
+lazy_static = "1.0"

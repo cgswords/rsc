@@ -19,6 +19,7 @@
 use util::Binop;
 use util::Relop;
 use util::Label;
+use util::Ident;
 use util::X86Loc;
 
 use generate_x86_64::X86Exp;
@@ -58,15 +59,15 @@ pub enum Triv
 // OUTPUT LANGUAGE
 // ---------------------------------------------------------------------------
 // pub enum X86Exp
-//   { ExpLabel(String)
-//   , ExpReg(String)
-//   , ExpDisplace(String, i64) // base register and offset value
-//   , ExpIndex(String, String) // base register and offset register
+//   { ExpLabel(Ident)
+//   , ExpReg(Ident)
+//   , ExpDisplace(Ident, i64) // base register and offset value
+//   , ExpIndex(Ident, Ident) // base register and offset register
 //   , ExpNum(i64)
 //   }
 // 
 // pub enum X86LangStmt 
-//   { Lbl(String)
+//   { Lbl(Ident)
 //   , SetOp(X86Exp, (Binop, X86Exp, X86Exp))
 //   , SetLoad(X86Exp, X86Exp)
 //   , IfNot(Relop, X86Exp, X86Exp, X86Exp)
@@ -94,9 +95,9 @@ pub fn flatten_program(input : Program) -> X86Program {
 
 fn letrec_entry(input : Letrec) -> Vec<X86LangStmt> {
   match input
-  { Letrec::Entry(Label::Label(s),rhs) =>
+  { Letrec::Entry(lbl,rhs) =>
     { let mut output_vec = exp(rhs);
-      output_vec.insert(0,X86LangStmt::Lbl(s));
+      output_vec.insert(0,X86LangStmt::Lbl(lbl.to_id()));
       return output_vec;
     }
   }
@@ -142,9 +143,7 @@ fn triv(input : Triv) -> X86Exp {
 }
 
 fn label(input : Label) -> X86Exp {
-  return match input { 
-    Label::Label(s) => X86Exp::ExpLabel(s)
-  }
+  X86Exp::ExpLabel(input.to_id())
 }
 
 // ---------------------------------------------------------------------------
@@ -154,13 +153,13 @@ fn mk_num_lit(n: i64) -> Triv {
   return Triv::Num(n);
 }
 fn mk_reg(s: &str) -> X86Loc {
-  return X86Loc::Reg(s.to_string());
+  return X86Loc::Reg(Ident::from_str(s));
 }
 fn mk_call(s: &str) -> Exp {
   return Exp::Call(Triv::Label(mk_lbl(s)));
 }
 fn mk_lbl(s : &str) -> Label {
-  return Label::Label(s.to_string());
+  return Label::new(Ident::from_str(s));
 }
 fn mk_set_op(dest: X86Loc, op: Binop, t1 : Triv, t2: Triv) -> Effect {
   return Effect::SetOp(dest, (op, t1, t2));

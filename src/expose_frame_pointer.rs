@@ -40,6 +40,7 @@
 use util::Binop;
 use util::Relop;
 use util::Label;
+use util::Ident;
 use util::X86Loc;
 use util::FRAME_PTR_REG;
 
@@ -81,7 +82,7 @@ pub enum Effect
   { SetOp(X86Loc, (Binop, Triv, Triv))
   , Set(X86Loc, Triv)
   , Nop
-  , MSet(String, Offset, Triv) // MSet takes a register, an offset, and a triv 
+  , MSet(Ident, Offset, Triv) // MSet takes a register, an offset, and a triv 
   , ReturnPoint(Label, Exp, i64) // Label, Expression for return point, frame size for call
   , If(Pred, Box<Effect>, Box<Effect>)
   , Begin(Box<Vec<Effect>>, Box<Effect>)
@@ -92,12 +93,12 @@ pub enum Triv
   { Loc(X86Loc) 
   , Num(i64) 
   , Label(Label)
-  , MRef(String, Offset) // Memory reference of a register and an offset
+  , MRef(Ident, Offset) // Memory reference of a register and an offset
   }
 
 #[derive(Debug)]
 pub enum Offset
-  { Reg(String)
+  { Reg(Ident)
   , Num(i64)
   }
 
@@ -132,8 +133,8 @@ pub enum Offset
 //   }
 // 
 // pub enum X86Loc 
-//   { Reg(String)
-//   , DisplaceOperand(String, i64) 
+//   { Reg(Ident)
+//   , DisplaceOperand(Ident, i64) 
 //   }
 // 
 // pub enum Triv 
@@ -180,11 +181,11 @@ fn pred(input : Pred) -> EMOPred {
   }
 }
 
-fn mk_emo_reg_loc(s : &str) -> X86Loc {
-  return X86Loc::Reg(s.to_string());
+fn mk_emo_reg_loc(s : Ident) -> X86Loc {
+  return X86Loc::Reg(s);
 }
 
-fn mk_emo_reg_triv(s : &str) -> EMOTriv {
+fn mk_emo_reg_triv(s : Ident) -> EMOTriv {
   return EMOTriv::Loc(mk_emo_reg_loc(s));
 }
 
@@ -240,7 +241,7 @@ fn mk_num_lit(n: i64) -> Triv {
 }
 
 fn mk_reg(s: &str) -> X86Loc {
-  return X86Loc::Reg(s.to_string());
+  return X86Loc::Reg(Ident::from_str(s));
 }
 
 fn mk_loc_reg(s: &str) -> Triv {
@@ -252,14 +253,14 @@ fn mk_call(s: &str) -> Exp {
 }
 
 fn mk_lbl(s : &str) -> Label {
-  return Label::Label(s.to_string());
+  return Label::new(Ident::from_str(s));
 }
 
 fn mk_set_op(dest: X86Loc, op: Binop, t1 : Triv, t2: Triv) -> Effect {
   return Effect::SetOp(dest, (op, t1, t2));
 }
 
-fn mk_mset(dest: String, offset: Offset, val : Triv) -> Effect {
+fn mk_mset(dest: Ident, offset: Offset, val : Triv) -> Effect {
   return Effect::MSet(dest, offset, val);
 }
 
@@ -272,14 +273,19 @@ fn mk_set(dest: X86Loc, val: Triv) -> Effect {
 }
 
 pub fn test1() -> Program {
+
+  let rax = Ident::from_str("rax");
+  let rbx = Ident::from_str("rbx");
+  let r15 = Ident::from_str("rbx");
+
   return Program::Letrec(
            vec![ Letrec::Entry(mk_lbl("X1")
                                    , Exp::If(Pred::Op(Relop::LT ,mk_loc_triv(mk_reg("r9")), mk_loc_triv(mk_reg("r8"))),
                                              Box::new(
                                                Exp::Begin(
                                                  vec![ mk_set_op(mk_reg("rax"), Binop::Plus, mk_loc_reg("rax"), mk_num_lit(10))
-                                                     , mk_mset("rbx".to_string(), Offset::Num(10), mk_num_lit(40))
-                                                     , mk_mset("rbx".to_string(), Offset::Reg("r15".to_string()), mk_num_lit(40))
+                                                     , mk_mset(rbx, Offset::Num(10), mk_num_lit(40))
+                                                     , mk_mset(rbx, Offset::Reg(r15), mk_num_lit(40))
                                                      , Effect::ReturnPoint(mk_lbl("foo"), 
                                                          Exp::Begin(
                                                             vec![ mk_set_op(mk_reg("rax")
@@ -289,7 +295,7 @@ pub fn test1() -> Program {
                                                                 ]
                                                            , mk_box!(mk_call("X1"))),
                                                            16)
-                                                     , mk_set(mk_reg("rbx"), Triv::MRef("rax".to_string(),Offset::Num(10)))]
+                                                     , mk_set(mk_reg("rbx"), Triv::MRef(rax, Offset::Num(10)))]
                                                 , Box::new(mk_call("void"))))
                                             , Box::new(
                                                 Exp::Begin(

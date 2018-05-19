@@ -22,6 +22,7 @@
 use util::Binop;
 use util::Relop;
 use util::Label;
+use util::Ident;
 use util::UniqueVar;
 use util::Location;
 use util::mk_uvar;
@@ -93,7 +94,7 @@ pub enum Triv
 #[derive(Debug)]
 pub enum Offset
   { UVar(UniqueVar)
-  , Reg(String)
+  , Reg(Ident)
   , Num(i64)
   }
 
@@ -249,6 +250,7 @@ fn offset(input: Offset, map: &HashMap<UniqueVar, Location>) -> EFVOffset {
                         } else {
                           panic!("Tried to place an offset variable on the stack.")
                         }
+  , Offset::Reg(s)   => EFVOffset::Reg(s)
   , Offset::Num(n)   => EFVOffset::Num(n)
   }
 }
@@ -270,7 +272,7 @@ fn mk_reg(s: &str) -> Variable {
 }
 
 fn mk_loc_reg(s: &str) -> Location {
-  return Location::Reg(s.to_string());
+  return Location::Reg(Ident::from_str(s));
 }
 
 fn mk_call(s: &str) -> Exp {
@@ -278,7 +280,7 @@ fn mk_call(s: &str) -> Exp {
 }
 
 fn mk_lbl(s : &str) -> Label {
-  return Label::Label(s.to_string());
+  return Label::new(Ident::from_str(s));
 }
 
 fn mk_set_op(dest: Variable, op: Binop, t1 : Triv, t2: Triv) -> Effect {
@@ -294,7 +296,7 @@ fn mk_loc_triv(l : Location) -> Triv {
 }
 
 fn mk_var(s : &str, index : i64) -> Variable {
-  return Variable::UVar(UniqueVar { name : s.to_string(), id : index });
+  return Variable::UVar(mk_uvar(s, index));
 }
 
 fn mk_var_triv(s : &str, index : i64) -> Triv {
