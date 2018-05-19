@@ -23,7 +23,6 @@ use util::Binop;
 use util::Relop;
 use util::Label;
 use util::Ident;
-use util::UniqueVar;
 use util::Location;
 use util::mk_uvar;
 
@@ -42,11 +41,11 @@ use expose_frame_variables::Offset   as EFVOffset;
 // ---------------------------------------------------------------------------
 
 #[derive(Debug)]
-pub enum Program { Letrec(Vec<Letrec>, HashMap<UniqueVar, Location>, Exp) }
+pub enum Program { Letrec(Vec<Letrec>, HashMap<Ident, Location>, Exp) }
                                        // ^ Stores the var locs for the body 
 
 #[derive(Debug)]
-pub enum Letrec { Entry(Label, HashMap<UniqueVar, Location>, Exp) }
+pub enum Letrec { Entry(Label, HashMap<Ident, Location>, Exp) }
                                // ^ Stores the var locs for the RHS 
 
 #[derive(Debug)]
@@ -80,7 +79,7 @@ pub enum Effect
 #[derive(Debug)]
 pub enum Variable 
   { Loc(Location)
-  , UVar(UniqueVar)
+  , UVar(Ident)
   }
 
 #[derive(Debug)]
@@ -93,7 +92,7 @@ pub enum Triv
 
 #[derive(Debug)]
 pub enum Offset
-  { UVar(UniqueVar)
+  { UVar(Ident)
   , Reg(Ident)
   , Num(i64)
   }
@@ -161,7 +160,7 @@ macro_rules! mk_box {
   ($e:expr) => [Box::new($e)]
 }
 
-fn exp(input : Exp, map: &HashMap<UniqueVar, Location>) -> EFVExp {
+fn exp(input : Exp, map: &HashMap<Ident, Location>) -> EFVExp {
   return match input 
   { Exp::Call(t)               => EFVExp::Call(triv(t, map))
   , Exp::If(test, conseq, alt) => EFVExp::If( pred(test,           map)
@@ -172,7 +171,7 @@ fn exp(input : Exp, map: &HashMap<UniqueVar, Location>) -> EFVExp {
   }
 }
 
-fn pred(input : Pred, map: &HashMap<UniqueVar, Location>) -> EFVPred {
+fn pred(input : Pred, map: &HashMap<Ident, Location>) -> EFVPred {
   return match input 
   { Pred::True                  => EFVPred::True
   , Pred::False                 => EFVPred::False
@@ -185,7 +184,7 @@ fn pred(input : Pred, map: &HashMap<UniqueVar, Location>) -> EFVPred {
   }
 }
 
-fn effect(input: Effect, map: &HashMap<UniqueVar, Location>) -> EFVEffect {
+fn effect(input: Effect, map: &HashMap<Ident, Location>) -> EFVEffect {
   return match input 
   { Effect::SetOp(l, (op, t1, t2))      => EFVEffect::SetOp(var(l, map), (op, triv(t1, map), triv(t2, map)))
   , Effect::Set(l, t)                   => EFVEffect::Set(var(l, map), triv(t, map))
@@ -211,7 +210,7 @@ fn loc(input : Location) -> Location {
   return input;
 }
 
-fn uvar(uvar: UniqueVar, map: &HashMap<UniqueVar, Location>) -> Location {
+fn uvar(uvar: Ident, map: &HashMap<Ident, Location>) -> Location {
   if let Some(location) = map.get(&uvar) {
     let thisLoc : Location = location.clone();
     loc(thisLoc)
@@ -220,14 +219,14 @@ fn uvar(uvar: UniqueVar, map: &HashMap<UniqueVar, Location>) -> Location {
   } 
 }
 
-fn var(input : Variable, map: &HashMap<UniqueVar, Location>) -> Location {
+fn var(input : Variable, map: &HashMap<Ident, Location>) -> Location {
   return match input
   { Variable::Loc(l)   => loc(l)
   , Variable::UVar(uv) => uvar(uv, map) 
   }
 }
 
-fn triv(input : Triv, map: &HashMap<UniqueVar, Location>) -> EFVTriv {
+fn triv(input : Triv, map: &HashMap<Ident, Location>) -> EFVTriv {
   return match input
   { Triv::Var(v)          => EFVTriv::Loc(var(v, map))
   , Triv::Num(n)          => EFVTriv::Num(n)
@@ -243,7 +242,7 @@ fn triv(input : Triv, map: &HashMap<UniqueVar, Location>) -> EFVTriv {
   } 
 }
 
-fn offset(input: Offset, map: &HashMap<UniqueVar, Location>) -> EFVOffset {
+fn offset(input: Offset, map: &HashMap<Ident, Location>) -> EFVOffset {
   return match input
   { Offset::UVar(uv) => if let Location::Reg(s) = uvar(uv, map) {
                           EFVOffset::Reg(s)
@@ -295,12 +294,12 @@ fn mk_loc_triv(l : Location) -> Triv {
   return as_var_triv(loc_as_var(l));
 }
 
-fn mk_var(s : &str, index : i64) -> Variable {
-  return Variable::UVar(mk_uvar(s, index));
+fn mk_var(id: Ident) -> Variable {
+  return Variable::UVar(id);
 }
 
-fn mk_var_triv(s : &str, index : i64) -> Triv {
-  return as_var_triv(mk_var(s, index));
+fn mk_var_triv(id: Ident) -> Triv {
+  return as_var_triv(mk_var(id));
 }
 
 fn as_var_triv(v: Variable) -> Triv {
@@ -316,32 +315,38 @@ fn mk_set(dest: Variable, val: Triv) -> Effect {
 }
 
 pub fn test1() -> Program {
+  let x0 = mk_uvar("x");
+  let x1 = mk_uvar("x");
+  let x2 = mk_uvar("x");
+  let x3 = mk_uvar("x");
+  let y4 = mk_uvar("y");
+
   let mut map = HashMap::new();
-  map.insert(mk_uvar("x",0), mk_loc_reg("rbx"));
-  map.insert(mk_uvar("x",1), Location::FrameVar(2));
-  map.insert(mk_uvar("x",2), mk_loc_reg("r8"));
-  map.insert(mk_uvar("x",3), mk_loc_reg("r9"));
-  map.insert(mk_uvar("y",4), mk_loc_reg("r15"));
+  map.insert(x0, mk_loc_reg("rbx"));
+  map.insert(x1, Location::FrameVar(2));
+  map.insert(x2, mk_loc_reg("r8"));
+  map.insert(x3, mk_loc_reg("r9"));
+  map.insert(y4, mk_loc_reg("r15"));
 
   let mut body_map = HashMap::new();
-  body_map.insert(mk_uvar("x",2), mk_loc_reg("r8"));
-  body_map.insert(mk_uvar("x",3), mk_loc_reg("r9"));
+  body_map.insert(x2, mk_loc_reg("r8"));
+  body_map.insert(x3, mk_loc_reg("r9"));
 
   return Program::Letrec(
            vec![ Letrec::Entry(mk_lbl("X1")
                               , map 
-                              , Exp::If(Pred::Op(Relop::LT, mk_var_triv("x",2), mk_var_triv("x",3)),
+                              , Exp::If(Pred::Op(Relop::LT, mk_var_triv(x2), mk_var_triv(x3)),
                                         Box::new(
                                           Exp::Begin(
-                                            vec![ mk_set_op(mk_var("x", 1), Binop::Plus, mk_var_triv("x",1), mk_num_lit(35))
-                                                , mk_mset(mk_var("x",0), Offset::Num(10), mk_num_lit(40))
-                                                , mk_mset(mk_var("x",0), Offset::UVar(mk_uvar("y", 4)), mk_num_lit(25))
+                                            vec![ mk_set_op(mk_var(x1), Binop::Plus, mk_var_triv(x1), mk_num_lit(35))
+                                                , mk_mset(mk_var(x0), Offset::Num(10), mk_num_lit(40))
+                                                , mk_mset(mk_var(x0), Offset::UVar(y4), mk_num_lit(25))
                                                 , Effect::ReturnPoint(mk_lbl("foo"), 
                                                     Exp::Begin(
                                                        vec![ mk_set(mk_reg("rax"), mk_fv_triv(1)) ]
                                                       , mk_box!(mk_call("X1")))
                                                     , 16)
-                                                , mk_set(mk_var("x",0), Triv::MRef(mk_reg("rax"),Offset::Num(10)))]
+                                                , mk_set(mk_var(x1), Triv::MRef(mk_reg("rax"),Offset::Num(10)))]
                                            , Box::new(mk_call("void"))))
                                        , Box::new(
                                            Exp::Begin(
@@ -351,8 +356,8 @@ pub fn test1() -> Program {
                ]
          , body_map
          , Exp::Begin(
-            vec![ mk_set(mk_var("x",2), mk_num_lit(0))
-                , mk_set(mk_var("x",3), mk_num_lit(1))
+            vec![ mk_set(mk_var(x2), mk_num_lit(0))
+                , mk_set(mk_var(x3), mk_num_lit(1))
                 ]
             , Box::new(mk_call("X1"))));
 }

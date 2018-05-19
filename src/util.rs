@@ -1,5 +1,4 @@
 pub use interner::Ident;
-use std::hash::{Hash, Hasher};
 
 #[derive(Debug)]
 pub enum Binop 
@@ -78,7 +77,7 @@ fn next_uvar_cnt () -> String {
 pub fn mk_uvar(var: &str) -> Ident {
     let mut var_str = var.to_string();
     var_str.push_str(&next_uvar_cnt());
-    return Label::new(Ident::from_str(&var_str));
+    return Ident::from_str(&var_str);
 }
 
 // A location is a register or a frame variable. That's all they will ever be.

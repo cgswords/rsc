@@ -16,7 +16,6 @@
 use util::Binop;
 use util::Relop;
 use util::Label;
-use util::UniqueVar;
 use util::Location;
 use util::mk_uvar;
 use util::Ident;
@@ -277,8 +276,8 @@ fn mk_var(id : Ident) -> Variable {
   return Variable::UVar(id);
 }
 
-fn mk_var_triv(s : &str, index : i64) -> Triv {
-  return as_var_triv(mk_var(s, index));
+fn mk_var_triv(id: Ident) -> Triv {
+  return as_var_triv(Variable::UVar(id));
 }
 
 fn as_var_triv(v: Variable) -> Triv {
@@ -314,12 +313,12 @@ pub fn test1() -> Program {
   return Program::Letrec(
            vec![ Letrec::Entry(mk_lbl("X1")
                               , map 
-                              , Exp::If(Pred::Op(Relop::LT, mk_var(x2), mk_var(x3)),
+                              , Exp::If(Pred::Op(Relop::LT, mk_var_triv(x2), mk_var_triv(x3)),
                                         Box::new(
                                           Exp::Begin(
                                             vec![ mk_set_op(mk_var(x1), Binop::Plus, mk_var_triv(x1), mk_num_lit(35))
                                                 , mk_mset(mk_var(x0), Offset::Num(10), mk_num_lit(40))
-                                                , mk_mset(mk_var(x0), Offset::UVar(mk_var(y4)), mk_num_lit(25))
+                                                , mk_mset(mk_var(x0), Offset::UVar(y4), mk_num_lit(25))
                                                 , Effect::ReturnPoint(mk_lbl("foo"), 
                                                     Exp::Begin(
                                                        vec![ mk_set(mk_reg("rax"), mk_fv_triv(1)) ]

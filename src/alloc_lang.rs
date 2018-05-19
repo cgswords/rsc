@@ -7,16 +7,16 @@ pub enum Letrec
 	{ Entry(RegAllocForm, Exp) }
 
 pub enum RegAllocForm
-	{ Allocated(HashMap<UniqueVar, Location>, Exp)
-  , Unallocated(mut RegAllocInfo, mut HashMap<UniqueVar, Location>, Exp)
+	{ Allocated(HashMap<Ident, Location>, Exp)
+  , Unallocated(mut RegAllocInfo, mut HashMap<Ident, Location>, Exp)
   }
 
 pub struct RegAllocInfo 
-  { locals            : mut Vec<UniqueVar>
-  , unspillables      : mut Vec<UniqueVar>
-  , spills            : mut Vec<UniqueVar>
-  , frame_conflits    : mut Vec<(UniqueVar, mut Vec<UniqueVar>)>
-  , register_conflits : mut Vec<(UniqueVar, mut Vec<UniqueVar>)>
+  { locals            : mut Vec<Ident>
+  , unspillables      : mut Vec<Ident>
+  , spills            : mut Vec<Ident>
+  , frame_conflits    : mut Vec<(Ident, mut Vec<Ident>)>
+  , register_conflits : mut Vec<(Ident, mut Vec<Ident>)>
   }
 
 #[derive(Debug)]
@@ -49,7 +49,7 @@ pub enum Effect
 #[derive(Debug)]
 pub enum Variable 
   { Loc(Location)
-  , UVar(UniqueVar)
+  , UVar(Ident)
   }
 
 #[derive(Debug)]
@@ -62,6 +62,6 @@ pub enum Triv
 
 #[derive(Debug)]
 pub enum Offset
-  { UVar(UniqueVar)
+  { UVar(Ident)
   , Num(i64)
   }
