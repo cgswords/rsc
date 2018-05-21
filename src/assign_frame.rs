@@ -45,9 +45,9 @@ use std::collections::HashSet;
 // 	{ Entry(RegAllocForm, Exp) }
 // 
 // pub enum RegAllocForm
-// 	{ Allocated(HashMap<Ident, Location>, Exp)
-//   , Unallocated(mut RegAllocInfo, mut HashMap<Ident, Location>, Exp)
-//   }
+// 	{ Allocated(HashMap<Ident, Location>)
+//  , Unallocated(mut RegAllocInfo, mut HashMap<Ident, Location>)
+//  }
 // 
 // pub struct RegAllocInfo 
 //   { locals            : mut Vec<Ident>
@@ -112,7 +112,16 @@ pub fn assign_frame(input : Program) -> Program {
 
 fn letrec_entry(input : Letrec) -> Letrec {
   return match input 
-  { Letrec::Entry(lbl, alloc_info, rhs) => Letrec::Entry(lbl, alloc_info, exp(rhs)) }
+  { Letrec::Entry(lbl, alloc_form, rhs) => 
+    match alloc_form {
+    { RegAllocForm::Allocated(_, _)                    => Letrec::Entry(lbl, alloc_form, rhs)
+    , RegAllocForm::Unallocated(alloc_info, locs, rhs) => {
+        let mut new_frame_locs = assign_frame_vars(&locs, &alloc_info.frame_conflicts, &alloc_info.spills);
+        locs.append(new_frame_locs);
+        alloc_info.spills.clear();
+        Letrec::Entry(lbl, RegAllocForm(alloc_info, locs, rhs))
+      }
+    }
 } 
 
 fn get_frame_index(input: &Location) -> i64 {
@@ -122,26 +131,39 @@ fn get_frame_index(input: &Location) -> i64 {
   }
 }
 
-fn conflict_union(conflicts : &Vec<(Ident, Vec<Ident>)) -> Vec<Ident>
-{
-  let mut vars : HashSet<Ident> = HashSet::new();
-  for conflict in conflicts {
-    vars.insert()
-    
+fn var_frame_index(v: &Variable) -> i64{
+  match input 
+  { Variable::Loc(l)  => frame_index(l)
+  , Variable::UVar(_) => -1
   }
-  // FIXME Implement this, and move it into alloc_lang probably
-  return Vec::new();
-  
 }
 
-fn assign_frame_vars( cur_locs  : mut HashMap<Ident, Location>
-                    , conflicts : &Vec<(Ident, Vec<Ident>)
+fn max_frame_index(cur_locs : &HashSet<Ident, Location>, conflicts : &Vec<(Ident, Vec<Ident>)) -> i64
+{
+  let location_max = cur_locs.values().cloned().fold(0, |acc, x| max(acc, frame_index(x)));
+
+  let conflict_max = conflicts.iter().fold(0, |cur_max, (var, conflict)| 
+                                                max(cur_max, 
+                                                    conflict.iter().fold(0, |acc, x| max(acc, var_frame_index(x)))));
+
+  return max(conflict_max, location_max);
+}
+
+fn assign_frame_vars( cur_locs  : &HashMap<Ident, Location>
+                    , conflicts : &Vec<(Ident, Vec<Variable>)
                     , spills    : &Vec<Ident>) ->
                     mut HashMap<Ident, location> 
 {
-    // HASH SETS!
-    let used_fvars = conflict_union(conflits);                  
-                          
+    let next_frame_index = max_frame_index(cur_locs, conflicts) + 1;
+
+    let mut result = HashMap::new();
+
+    for spill in spills {
+      result.insert(spill, index_fvar(next_frame_index));
+      next_frame_index += 1;
+    }
+     
+    result
 }
 
 // ---------------------------------------------------------------------------

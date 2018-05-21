@@ -98,6 +98,10 @@ pub fn frame_index(l: Location) -> i64 {
   }  
 }
 
+pub fn index_fvar(n : i64) -> Location {
+  Location::FrameVar(n)
+}
+
 // An x86_64 location is one of:
 // - a register
 // -a displacement operand (a register and offset value)
