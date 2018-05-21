@@ -1,16 +1,26 @@
 #[derive(Debug)]
-pub enum Program { Letrec(Vec<Letrec>, RegAllocForm, Exp) }
+pub enum Program { Letrec(Vec<LetrecEntry>, Body) }
                                        // ^ Stores allocation info for the body 
 
 #[derive(Debug)]
-pub enum Letrec 
-	{ Entry(RegAllocForm, Exp) }
+pub struct LetrecEntry
+  { label : Label
+  , rhs   : Body
+  }
 
+#[derive(Debug)]
+pub struct Body 
+  { alloc : RegAllocForm
+  , exp : Exp
+  }
+
+#[derive(Debug)]
 pub enum RegAllocForm
 	{ Allocated(HashMap<Ident, Location>, Exp)
   , Unallocated(mut RegAllocInfo, mut HashMap<Ident, Location>, Exp)
   }
 
+#[derive(Debug)]
 pub struct RegAllocInfo 
   { locals            : mut Vec<Ident>
   , unspillables      : mut Vec<Ident>

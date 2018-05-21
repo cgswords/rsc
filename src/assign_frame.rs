@@ -38,17 +38,29 @@ use std::collections::HashSet;
 // ---------------------------------------------------------------------------
 // INPUT / OUTPUT LANGUAGE
 // ---------------------------------------------------------------------------
-// pub enum Program { Letrec(Vec<Letrec>, RegAllocForm, Exp) }
+// #[derive(Debug)]
+// pub enum Program { Letrec(Vec<LetrecEntry>, Body) }
 //                                        // ^ Stores allocation info for the body 
 // 
-// pub enum Letrec 
-// 	{ Entry(RegAllocForm, Exp) }
+// #[derive(Debug)]
+// pub struct LetrecEntry
+//   { label : Label
+//   , rhs   : Body
+//   }
 // 
+// #[derive(Debug)]
+// pub struct Body 
+//   { alloc : RegAllocForm
+//   , exp : Exp
+//   }
+// 
+// #[derive(Debug)]
 // pub enum RegAllocForm
-// 	{ Allocated(HashMap<Ident, Location>)
-//  , Unallocated(mut RegAllocInfo, mut HashMap<Ident, Location>)
-//  }
+// 	{ Allocated(HashMap<Ident, Location>, Exp)
+//   , Unallocated(mut RegAllocInfo, mut HashMap<Ident, Location>, Exp)
+//   }
 // 
+// #[derive(Debug)]
 // pub struct RegAllocInfo 
 //   { locals            : mut Vec<Ident>
 //   , unspillables      : mut Vec<Ident>
@@ -56,7 +68,7 @@ use std::collections::HashSet;
 //   , frame_conflits    : mut Vec<(Ident, mut Vec<Ident>)>
 //   , register_conflits : mut Vec<(Ident, mut Vec<Ident>)>
 //   }
-// 
+//
 // pub enum Exp 
 //   { Call(Triv, Vec<Location>)
 //   , If(Pred,Box<Exp>,Box<Exp>)
@@ -103,16 +115,19 @@ use std::collections::HashSet;
 // ---------------------------------------------------------------------------
 pub fn assign_frame(input : Program) -> Program {
   return match input 
-  { Program::Letrec(letrecs, alloc_info, body) =>  
+  { Program::Letrec(letrecs, body) =>  
       Program::Letrec( letrecs.into_iter().map(|x| letrec_entry(x)).collect()
-                     , alloc_info
-                     , exp(body))
+                     , body(body))
   }  
 }
 
-fn letrec_entry(input : Letrec) -> Letrec {
+fn letrec_entry(input : Letrec) -> LetrecEntry {
+  LetrecEntry 
+  { label : input.label
+  , rhs   : body(rhs)
+  }
   return match input 
-  { Letrec::Entry(lbl, alloc_form, rhs) => 
+  { Letrec::Entry(lbl, rhs) => body(rhs)
     match alloc_form {
     { RegAllocForm::Allocated(_, _)                    => Letrec::Entry(lbl, alloc_form, rhs)
     , RegAllocForm::Unallocated(alloc_info, locs, rhs) => {
