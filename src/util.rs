@@ -83,11 +83,20 @@ pub fn mk_uvar(var: &str) -> Ident {
 // A location is a register or a frame variable. That's all they will ever be.
 // Abstracting this allows us to use the same map through multiple passes
 // without converting the locations from language to language.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Location
   { Reg(Ident)
   , FrameVar(i64) // offset value
   }
+
+// Returns the frame index of frame variable locations
+// (and -1 for registers).
+pub fn frame_index(l: Location) -> i64 {
+  match l 
+  { Location::Reg(_)      => -1
+  , Location::FrameVar(n) => n
+  }  
+}
 
 // An x86_64 location is one of:
 // - a register

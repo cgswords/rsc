@@ -16,9 +16,10 @@
 use util::Binop;
 use util::Relop;
 use util::Label;
-use util::UniqueVar;
+use util::Ident;
 use util::Location;
 use util::mk_uvar;
+use util::frame_index;
 
 use alloc_lang::Program;
 use alloc_lang::Letrec;
@@ -121,18 +122,22 @@ fn get_frame_index(input: &Location) -> i64 {
   }
 }
 
-fn conflict_union(conflicts : &Vec<(UniqueVar, Vec<UniqueVar>)) -> Vec<UniqueVar>
+fn conflict_union(conflicts : &Vec<(Ident, Vec<Ident>)) -> Vec<Ident>
 {
-  let mut vars : HashSet
+  let mut vars : HashSet<Ident> = HashSet::new();
+  for conflict in conflicts {
+    vars.insert()
+    
+  }
   // FIXME Implement this, and move it into alloc_lang probably
   return Vec::new();
   
 }
 
-fn assign_frame_vars( cur_locs  : mut HashMap<UniqueVar, Location>
-                    , conflicts : &Vec<(UniqueVar, Vec<UniqueVar>)
-                    , spills    : &Vec<UniqueVar>) ->
-                    mut HashMap<UniqueVar, location> 
+fn assign_frame_vars( cur_locs  : mut HashMap<Ident, Location>
+                    , conflicts : &Vec<(Ident, Vec<Ident>)
+                    , spills    : &Vec<Ident>) ->
+                    mut HashMap<Ident, location> 
 {
     // HASH SETS!
     let used_fvars = conflict_union(conflits);                  
@@ -177,14 +182,6 @@ fn mk_mset(dest: Variable, offset: Offset, val : Triv) -> Effect {
 
 fn mk_loc_triv(l : Location) -> Triv {
   return as_var_triv(loc_as_var(l));
-}
-
-fn mk_var(s : &str, index : i64) -> Variable {
-  return Variable::UVar(UniqueVar { name : s.to_string(), id : index });
-}
-
-fn mk_var_triv(s : &str, index : i64) -> Triv {
-  return as_var_triv(mk_var(s, index));
 }
 
 fn as_var_triv(v: Variable) -> Triv {
