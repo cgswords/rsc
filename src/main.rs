@@ -1,11 +1,11 @@
 extern crate string_interner;
 
-
 #[macro_use(lazy_static,__lazy_static_create,__lazy_static_internal)]
 extern crate lazy_static;
 
 mod util;
 mod interner;
+mod alloc_lang;
 
 //use util::Binop;
 //use util::Relop;
@@ -33,6 +33,9 @@ use finalize_locations::finalize_locations;
 
 mod discard_call_lives;
 use discard_call_lives::discard_call_lives;
+
+mod discard_allocation_info;
+use discard_allocation_info::discard_allocation_info;
 
 fn main() {
 
@@ -132,4 +135,22 @@ fn main() {
       discard_call_lives::test1())))))))); 
    
    println!("{}",output14); 
+
+   let output15 = discard_allocation_info(discard_allocation_info::test1()); 
+   
+   println!("{:?}",output15); 
+
+   let output16 : String = 
+    generate_x86_64(
+    flatten_program(
+    expose_basic_blocks(
+    expose_memory_operands(
+    expose_frame_pointer(
+    expose_frame_variables(
+    finalize_locations(
+    discard_call_lives(
+    discard_allocation_info(
+      discard_allocation_info::test1()))))))))); 
+   
+   println!("{}",output16); 
 }

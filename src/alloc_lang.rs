@@ -1,32 +1,39 @@
+use util::Label;
+use util::Location;
+use util::Ident;
+use util::Relop;
+use util::Binop;
+
+use std::collections::HashMap;
+
 #[derive(Debug)]
 pub enum Program { Letrec(Vec<LetrecEntry>, Body) }
-                                       // ^ Stores allocation info for the body 
 
 #[derive(Debug)]
 pub struct LetrecEntry
-  { label : Label
-  , rhs   : Body
+  { pub label : Label
+  , pub rhs   : Body
   }
 
 #[derive(Debug)]
 pub struct Body 
-  { alloc : RegAllocForm
-  , exp : Exp
+  { pub alloc : RegAllocForm
+  , pub exp : Exp
   }
 
 #[derive(Debug)]
 pub enum RegAllocForm
-	{ Allocated(HashMap<Ident, Location>, Exp)
-  , Unallocated(mut RegAllocInfo, mut HashMap<Ident, Location>, Exp)
+	{ Allocated(HashMap<Ident, Location>)
+  , Unallocated(RegAllocInfo, HashMap<Ident, Location>)
   }
 
 #[derive(Debug)]
 pub struct RegAllocInfo 
-  { locals            : mut Vec<Ident>
-  , unspillables      : mut Vec<Ident>
-  , spills            : mut Vec<Ident>
-  , frame_conflits    : mut Vec<(Ident, mut Vec<Ident>)>
-  , register_conflits : mut Vec<(Ident, mut Vec<Ident>)>
+  { locals            : Vec<Ident>
+  , unspillables      : Vec<Ident>
+  , spills            : Vec<Ident>
+  , frame_conflits    : Vec<(Ident, Vec<Ident>)>
+  , register_conflits : Vec<(Ident, Vec<Ident>)>
   }
 
 #[derive(Debug)]
@@ -67,7 +74,7 @@ pub enum Triv
   { Var(Variable)
   , Num(i64) 
   , Label(Label)
-  , MRef(Triv, Triv)
+  , MRef(Box<Triv>, Box<Triv>)
   }
 
 #[derive(Debug)]

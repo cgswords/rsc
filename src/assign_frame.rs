@@ -56,9 +56,9 @@ use std::collections::HashSet;
 // 
 // #[derive(Debug)]
 // pub enum RegAllocForm
-// 	{ Allocated(HashMap<Ident, Location>, Exp)
-//   , Unallocated(mut RegAllocInfo, mut HashMap<Ident, Location>, Exp)
-//   }
+// 	{ Allocated(HashMap<Ident, Location>)
+//  , Unallocated(mut RegAllocInfo, mut HashMap<Ident, Location>)
+//  }
 // 
 // #[derive(Debug)]
 // pub struct RegAllocInfo 
@@ -115,9 +115,9 @@ use std::collections::HashSet;
 // ---------------------------------------------------------------------------
 pub fn assign_frame(input : Program) -> Program {
   return match input 
-  { Program::Letrec(letrecs, body) =>  
+  { Program::Letrec(letrecs, body_exp) =>  
       Program::Letrec( letrecs.into_iter().map(|x| letrec_entry(x)).collect()
-                     , body(body))
+                     , body(body_exp))
   }  
 }
 
@@ -126,18 +126,19 @@ fn letrec_entry(input : Letrec) -> LetrecEntry {
   { label : input.label
   , rhs   : body(rhs)
   }
-  return match input 
-  { Letrec::Entry(lbl, rhs) => body(rhs)
-    match alloc_form {
-    { RegAllocForm::Allocated(_, _)                    => Letrec::Entry(lbl, alloc_form, rhs)
-    , RegAllocForm::Unallocated(alloc_info, locs, rhs) => {
-        let mut new_frame_locs = assign_frame_vars(&locs, &alloc_info.frame_conflicts, &alloc_info.spills);
-        locs.append(new_frame_locs);
-        alloc_info.spills.clear();
-        Letrec::Entry(lbl, RegAllocForm(alloc_info, locs, rhs))
-      }
+}
+
+fn body(input: Body) -> Body {
+  match input.alloc
+  { RegAllocForm::Allocated(_, _)               => Body { alloc : input.alloc , exp : input.exp }
+  , RegAllocForm::Unallocated(alloc_info, locs) => {
+      let mut new_frame_locs = assign_frame_vars(&locs, &alloc_info.frame_conflicts, &alloc_info.spills);
+      locs.append(new_frame_locs);
+      alloc_info.spills.clear();
+      Body { alloc : RegAllocForm(alloc_info, locs, rhs) , exp : input.exp }
     }
-} 
+  }
+}
 
 fn get_frame_index(input: &Location) -> i64 {
   match input

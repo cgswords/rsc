@@ -22,26 +22,34 @@ use util::Ident;
 
 use std::collections::HashMap;
 
-use finalize_locations::Program  as FLProgram;
-use finalize_locations::Letrec   as FLLetrec;
-use finalize_locations::Exp      as FLExp;
-use finalize_locations::Effect   as FLEffect;
-use finalize_locations::Pred     as FLPred;
-use finalize_locations::Triv     as FLTriv;
-use finalize_locations::Offset   as FLOffset;
-use finalize_locations::Variable as FLVar;
+use finalize_locations::Program     as FLProgram;
+use finalize_locations::LetrecEntry as FLLetrecEntry;
+use finalize_locations::Body        as FLBody;
+use finalize_locations::Exp         as FLExp;
+use finalize_locations::Effect      as FLEffect;
+use finalize_locations::Pred        as FLPred;
+use finalize_locations::Triv        as FLTriv;
+use finalize_locations::Offset      as FLOffset;
+use finalize_locations::Variable    as FLVar;
 
 // ---------------------------------------------------------------------------
 // INPUT LANGUAGE
 // ---------------------------------------------------------------------------
 
 #[derive(Debug)]
-pub enum Program { Letrec(Vec<Letrec>, HashMap<Ident, Location>, Exp) }
-                                       // ^ Stores the var locs for the body 
+pub enum Program { Letrec(Vec<LetrecEntry>, Body) }
 
 #[derive(Debug)]
-pub enum Letrec { Entry(Label, HashMap<Ident, Location>, Exp) }
-                               // ^ Stores the var locs for the RHS 
+pub struct LetrecEntry
+  { pub label : Label
+  , pub rhs : Body
+  }
+
+#[derive(Debug)]
+pub struct Body
+  { pub locations : HashMap<Ident, Location> // variable locations for the rhs
+  , pub expression : Exp
+  }
 
 #[derive(Debug)]
 pub enum Exp 
@@ -96,12 +104,20 @@ pub enum Offset
 // OUTPUT LANGUAGE
 // ---------------------------------------------------------------------------
 // #[derive(Debug)]
-// pub enum Program { Letrec(Vec<Letrec>, HashMap<Ident, Location>, Exp) }
-//                                        // ^ Stores the var locs for the body 
+// pub enum Program { Letrec(Vec<Letrec>, Body) }
+// 
+//
+// #[derive(Debug)]
+// pub struct LetrecEntry
+//   { label : Label
+//   , rhs : Body
+//   }
 // 
 // #[derive(Debug)]
-// pub enum Letrec { Entry(Label, HashMap<Ident, Location>, Exp) }
-//                                // ^ Stores the var locs for the RHS 
+// pub struct Body
+//   { locations : HashMap<Ident, Location> // variable locations for the rhs
+//   , expression : Exp
+//   }
 // 
 // #[derive(Debug)]
 // pub enum Exp 
@@ -157,17 +173,19 @@ pub enum Offset
 // ---------------------------------------------------------------------------
 pub fn discard_call_lives(input : Program) -> FLProgram {
   return match input 
-  { Program::Letrec(letrecs, map, body) =>  
+  { Program::Letrec(letrecs, pgm_body) =>  
       FLProgram::Letrec( letrecs.into_iter().map(|x| letrec_entry(x)).collect()
-                        , map
-                        , exp(body))
+                        , body(pgm_body))
   }  
 }
 
-fn letrec_entry(input : Letrec) -> FLLetrec {
-  return match input 
-  { Letrec::Entry(lbl, map, rhs) => FLLetrec::Entry(lbl, map, exp(rhs)) }
+fn letrec_entry(input : LetrecEntry) -> FLLetrecEntry {
+  FLLetrecEntry { label : input.label, rhs : body(input.rhs) } 
 } 
+
+fn body(input : Body) -> FLBody {
+ FLBody { locations : input.locations , expression : exp(input.expression) }
+}
 
 macro_rules! mk_box {
   ($e:expr) => [Box::new($e)]
@@ -311,31 +329,35 @@ pub fn test1() -> Program {
   body_map.insert(x3, mk_loc_reg("r9"));
 
   return Program::Letrec(
-           vec![ Letrec::Entry(mk_lbl("X1")
-                              , map 
-                              , Exp::If(Pred::Op(Relop::LT, mk_var_triv(x2), mk_var_triv(x3)),
-                                        Box::new(
-                                          Exp::Begin(
-                                            vec![ mk_set_op(mk_var(x1), Binop::Plus, mk_var_triv(x1), mk_num_lit(35))
-                                                , mk_mset(mk_var(x0), Offset::Num(10), mk_num_lit(40))
-                                                , mk_mset(mk_var(x0), Offset::UVar(y4), mk_num_lit(25))
-                                                , Effect::ReturnPoint(mk_lbl("foo"), 
-                                                    Exp::Begin(
-                                                       vec![ mk_set(mk_reg("rax"), mk_fv_triv(1)) ]
-                                                      , mk_box!(mk_call("X1", Vec::new())))
-                                                    , 16)
-                                                , mk_set(mk_var(x0), Triv::MRef(mk_reg("rax"),Offset::Num(10)))]
-                                           , Box::new(mk_call("void", vec![mk_loc_reg("rax")]))))
-                                       , Box::new(
-                                           Exp::Begin(
-                                             vec![mk_set_op(mk_reg("rax"), Binop::Plus, as_var_triv(mk_reg("rax")), mk_num_lit(10))]
-                                            , Box::new(mk_call("void", vec![mk_loc_reg("rax"), mk_loc_reg("rbp")])))))
-                              )
+           vec![ LetrecEntry{ label : mk_lbl("X1")
+                            , rhs : Body 
+                                    { locations : map 
+                                    , expression : Exp::If(Pred::Op(Relop::LT, mk_var_triv(x2), mk_var_triv(x3)),
+                                                   Box::new(
+                                                     Exp::Begin(
+                                                       vec![ mk_set_op(mk_var(x1), Binop::Plus, mk_var_triv(x1), mk_num_lit(35))
+                                                           , mk_mset(mk_var(x0), Offset::Num(10), mk_num_lit(40))
+                                                           , mk_mset(mk_var(x0), Offset::UVar(y4), mk_num_lit(25))
+                                                           , Effect::ReturnPoint(mk_lbl("foo"), 
+                                                               Exp::Begin(
+                                                                  vec![ mk_set(mk_reg("rax"), mk_fv_triv(1)) ]
+                                                                 , mk_box!(mk_call("X1", Vec::new())))
+                                                               , 16)
+                                                           , mk_set(mk_var(x0), Triv::MRef(mk_reg("rax"),Offset::Num(10)))]
+                                                      , Box::new(mk_call("void", vec![mk_loc_reg("rax")]))))
+                                                  , Box::new(
+                                                      Exp::Begin(
+                                                        vec![mk_set_op(mk_reg("rax"), Binop::Plus, as_var_triv(mk_reg("rax")), mk_num_lit(10))]
+                                                       , Box::new(mk_call("void", vec![mk_loc_reg("rax"), mk_loc_reg("rbp")])))))
+                                    }
+                            }
                ]
-         , body_map
-         , Exp::Begin(
-            vec![ mk_set(mk_var(x2), mk_num_lit(0))
-                , mk_set(mk_var(x3), mk_num_lit(1))
-                ]
-            , Box::new(mk_call("X1", vec![mk_loc_reg("rax"), mk_loc_reg("rbp")]))));
+         , Body 
+           { locations : body_map
+           , expression : Exp::Begin(
+                            vec![ mk_set(mk_var(x2), mk_num_lit(0))
+                                , mk_set(mk_var(x3), mk_num_lit(1))
+                                ]
+                                , Box::new(mk_call("X1", vec![mk_loc_reg("rax"), mk_loc_reg("rbp")])))
+           });
 }
