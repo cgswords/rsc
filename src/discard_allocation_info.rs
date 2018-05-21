@@ -21,6 +21,8 @@ use util::mk_uvar;
 
 use std::collections::HashMap;
 
+use alloc_lang::RegAllocForm;
+
 use discard_call_lives::Program     as DCLProgram;
 use discard_call_lives::LetrecEntry as DCLLetrecEntry;
 use discard_call_lives::Body        as DCLBody;
@@ -34,37 +36,29 @@ use discard_call_lives::Variable    as DCLVar;
 // ---------------------------------------------------------------------------
 // INPUT LANGUAGE
 // ---------------------------------------------------------------------------
+#[derive(Debug)]
 pub enum Program { Letrec(Vec<LetrecEntry>, Body) }
 
+#[derive(Debug)]
 pub struct LetrecEntry
   { pub label : Label
   , pub rhs   : Body
   }
 
+#[derive(Debug)]
 pub struct Body 
   { pub alloc : RegAllocForm
   , pub expression : Exp
   }
 
-pub enum RegAllocForm
-	{ Allocated(HashMap<Ident, Location>)
-  , Unallocated(RegAllocInfo, HashMap<Ident, Location>)
-  }
-
-pub struct RegAllocInfo 
-  { locals            : Vec<Ident>
-  , unspillables      : Vec<Ident>
-  , spills            : Vec<Ident>
-  , frame_conflits    : Vec<(Ident, Vec<Ident>)>
-  , register_conflits : Vec<(Ident, Vec<Ident>)>
-  }
-
+#[derive(Debug)]
 pub enum Exp 
   { Call(Triv, Vec<Location>)
   , If(Pred,Box<Exp>,Box<Exp>)
   , Begin(Vec<Effect>,Box<Exp>)
   }
 
+#[derive(Debug)]
 pub enum Pred
   { True
   , False
@@ -73,6 +67,7 @@ pub enum Pred
   , Begin(Vec<Effect>, Box<Pred>)
   }
 
+#[derive(Debug)]
 pub enum Effect
   { SetOp(Variable, (Binop, Triv, Triv))
   , Set(Variable, Triv)
@@ -84,11 +79,13 @@ pub enum Effect
   , Begin(Box<Vec<Effect>>, Box<Effect>)
   }
 
+#[derive(Debug)]
 pub enum Variable 
   { Loc(Location)
   , UVar(Ident)
   }
 
+#[derive(Debug)]
 pub enum Triv 
   { Var(Variable)
   , Num(i64) 
@@ -96,8 +93,10 @@ pub enum Triv
   , MRef(Variable, Offset)
   }
 
+#[derive(Debug)]
 pub enum Offset
   { UVar(Ident)
+  , Reg(Ident)
   , Num(i64)
   }
 
@@ -223,14 +222,14 @@ fn loc(input : Location) -> Location {
 }
 
 fn var(input : Variable) -> DCLVar {
-  return match input
+  match input
   { Variable::Loc(l)   => DCLVar::Loc(loc(l))
   , Variable::UVar(uv) => DCLVar::UVar(uv)
   }
 }
 
 fn triv(input : Triv) -> DCLTriv {
-  return match input
+  match input
   { Triv::Var(v)          => DCLTriv::Var(var(v))
   , Triv::Num(n)          => DCLTriv::Num(n)
   , Triv::Label(l)        => DCLTriv::Label(l)
@@ -239,8 +238,9 @@ fn triv(input : Triv) -> DCLTriv {
 }
 
 fn offset(input: Offset) -> DCLOffset {
-  return match input
+  match input
   { Offset::UVar(uv) => DCLOffset::UVar(uv)
+  , Offset::Reg(r)   => DCLOffset::Reg(r)
   , Offset::Num(n)   => DCLOffset::Num(n)
   }
 }

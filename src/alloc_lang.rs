@@ -18,7 +18,7 @@ pub struct LetrecEntry
 #[derive(Debug)]
 pub struct Body 
   { pub alloc : RegAllocForm
-  , pub exp : Exp
+  , pub expression : Exp
   }
 
 #[derive(Debug)]
@@ -75,10 +75,4 @@ pub enum Triv
   , Num(i64) 
   , Label(Label)
   , MRef(Box<Triv>, Box<Triv>)
-  }
-
-#[derive(Debug)]
-pub enum Offset
-  { UVar(Ident)
-  , Num(i64)
   }

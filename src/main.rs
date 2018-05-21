@@ -37,6 +37,9 @@ use discard_call_lives::discard_call_lives;
 mod discard_allocation_info;
 use discard_allocation_info::discard_allocation_info;
 
+mod finalize_instruction_selection;
+use finalize_instruction_selection::finalize_instruction_selection;
+
 fn main() {
 
    // TODO: write a pass to optimize jumps
@@ -153,4 +156,23 @@ fn main() {
       discard_allocation_info::test1()))))))))); 
    
    println!("{}",output16); 
+
+   let output17 = finalize_instruction_selection(finalize_instruction_selection::test1()); 
+   
+   println!("{:?}",output17); 
+
+   let output18 : String = 
+    generate_x86_64(
+    flatten_program(
+    expose_basic_blocks(
+    expose_memory_operands(
+    expose_frame_pointer(
+    expose_frame_variables(
+    finalize_locations(
+    discard_call_lives(
+    discard_allocation_info(
+    finalize_instruction_selection(
+      finalize_instruction_selection::test1())))))))))); 
+   
+   println!("{}",output18); 
 }
