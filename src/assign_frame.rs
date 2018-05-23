@@ -140,23 +140,15 @@ fn body(input: Body) -> Body {
   }
 }
 
-fn get_frame_index(input: &Location) -> i64 {
-  match input
-  { Location::Reg(_)      => 0
-  , Location::FrameVar(n) => n
-  }
-}
-
-fn var_frame_index(v: &Variable) -> i64{
+fn var_frame_index(v: &FrameConflict) -> i64 {
   match input 
-  { Variable::Loc(l)  => frame_index(l)
-  , Variable::UVar(_) => -1
+  { FrameConflict::UVar(l)     => -1
+  , FrameConflict::FrameVar(i) => i
   }
 }
 
-fn max_frame_index(cur_locs : &HashSet<Ident, Location>, conflicts : &Vec<(Ident, Vec<Ident>)) -> i64
-{
-  let location_max = cur_locs.values().cloned().fold(0, |acc, x| max(acc, frame_index(x)));
+fn max_frame_index(locs : &HashSet<Ident, Location>, conflicts : &Vec<(Ident, Vec<Ident>)) -> i64 {
+  let location_max = locs.values().cloned().fold(0, |acc, x| max(acc, frame_index(x)));
 
   let conflict_max = conflicts.iter().fold(0, |cur_max, (var, conflict)| 
                                                 max(cur_max, 
@@ -186,92 +178,136 @@ fn assign_frame_vars( cur_locs  : &HashMap<Ident, Location>
 // TESTING
 // ---------------------------------------------------------------------------
 
-fn mk_num_lit(n: i64) -> Triv {
-  return Triv::Num(n);
-}
+mod test {
 
-fn mk_fv_triv(n: i64) -> Triv {
-  return mk_loc_triv(Location::FrameVar(n));
-}
+  use alloc_lang::framevar_to_conflict;
 
-fn mk_reg(s: &str) -> Variable {
-  return Variable::Loc(mk_loc_reg(s));
-}
+  fn calle(call : Triv, args : Vec<Location>) -> Exp { Exp::Call(call, args) }
 
-fn mk_loc_reg(s: &str) -> Location {
-  return Location::Reg(s.to_string());
-}
+  fn ife(test : Pred, conseq : Exp, alt : Exp) -> Exp { Exp::If(test, mk_box!(conseq), mk_box!(alt)) }
 
-fn mk_call(s: &str) -> Exp {
-  return Exp::Call(Triv::Label(mk_lbl(s)));
-}
+  fn begine(args : Vec<Effect>, base : Exp) -> Exp { Exp::Begin(args, mk_box!(base)) }
 
-fn mk_lbl(s : &str) -> Label {
-  return Label::Label(s.to_string());
-}
+  fn rop(op : Relop, t1 : Triv, t2 : Triv) -> Pred { Pred::Op(op, t1, t2) }
 
-fn mk_set_op(dest: Variable, op: Binop, t1 : Triv, t2: Triv) -> Effect {
-  return Effect::SetOp(dest, (op, t1, t2));
-}
+  fn ifp(test : Pred, conseq : Pred, alt : Pred) -> Pred { Pred::If(mk_box!(test), mk_box!(conseq), mk_box!(alt)) }
 
-fn mk_mset(dest: Variable, offset: Offset, val : Triv) -> Effect {
-  return Effect::MSet(dest, offset, val);
-}
+  fn beginp(args : Vec<Effect>, base : Pred) -> Pred { Pred::Begin(args, mk_box!(base)) }
 
-fn mk_loc_triv(l : Location) -> Triv {
-  return as_var_triv(loc_as_var(l));
-}
+  fn setopf(t1 : Triv, op : Binop, arg1 : Triv, arg2 : Triv) -> Effect { Effect::SetOp(t1, (op, arg1, arg2)) }
 
-fn as_var_triv(v: Variable) -> Triv {
-  return Triv::Var(v);
-}
+  fn setf(dest : Triv, src : Triv) -> Effect { Effect::Set(dest, src) }
+  
+  fn nopf() -> Effect { Effect::Nop }
+  
+  fn msetf(dest : Triv, src : Triv, offset : Triv) -> Effect { Effect::MSet(dest, src, offset) }
+  
+  fn retf(lbl : Label,  frame_size : i64, body : Exp) -> Effect { Effect::ReturnPoint(lbl, body, frame_size) }
+  
+  fn iff(test : Pred, conseq : Effect, alt : Effect) -> Effect { Effect::If(test, mk_box!(conseq), mk_box!(alt)) }
+ 
+  fn beginf(args : Vec<Effect>, base : Effect) -> Effect { Effect::Begin(mk_box!(args), mk_box!(base)) }
+  
+  fn uv(name : Ident) -> Variable { Variable::UVar(name) }
 
-fn loc_as_var(l: Location) -> Variable {
-  return Variable::Loc(l);
-}
+  fn vt(name : Ident) -> Triv { Triv::Var(Variable::UVar(name)) }
+  
+  fn nt(val : i64) -> Triv { Triv::Num(val) }
+  
+  fn lt(lbl : Label) -> Triv { Triv::Label(lbl) }
+  
+  fn mreft(src : Triv, offset : Triv) -> Triv { Triv::(mk_box!(src), mk_box!(offset)) }
 
-fn mk_set(dest: Variable, val: Triv) -> Effect {
-  return Effect::Set(dest,val)
-}
+  fn fv(n: i64) -> Triv { return Triv::Var(Variable::Loc(Location::FrameVar(Ident::from_str(s)))); }
 
-pub fn test1() -> Program {
-  let mut map = HashMap::new();
-  map.insert(mk_uvar("x",0), mk_loc_reg("rbx"));
-  map.insert(mk_uvar("x",1), Location::FrameVar(2));
-  map.insert(mk_uvar("x",2), mk_loc_reg("r8"));
-  map.insert(mk_uvar("x",3), mk_loc_reg("r9"));
-  map.insert(mk_uvar("y",4), mk_loc_reg("r15"));
+  fn reg(s: &str) -> Triv { return Triv::Var(Variable::Loc(Location::Reg(Ident::from_str(s)))); }
 
-  let mut body_map = HashMap::new();
-  body_map.insert(mk_uvar("x",2), mk_loc_reg("r8"));
-  body_map.insert(mk_uvar("x",3), mk_loc_reg("r9"));
+  fn mk_lbl(s : &str) -> Label { return Label::Label(s.to_string()); }
 
-  return Program::Letrec(
-           vec![ Letrec::Entry(mk_lbl("X1")
-                              , map 
-                              , Exp::If(Pred::Op(Relop::LT, mk_var_triv("x",2), mk_var_triv("x",3)),
-                                        Box::new(
-                                          Exp::Begin(
-                                            vec![ mk_set_op(mk_var("x", 1), Binop::Plus, mk_var_triv("x",1), mk_num_lit(35))
-                                                , mk_mset(mk_var("x",0), Offset::Num(10), mk_num_lit(40))
-                                                , mk_mset(mk_var("x",0), Offset::UVar(mk_uvar("y", 4)), mk_num_lit(25))
-                                                , Effect::ReturnPoint(mk_lbl("foo"), 
-                                                    Exp::Begin(
-                                                       vec![ mk_set(mk_reg("rax"), mk_fv_triv(1)) ]
-                                                      , mk_box!(mk_call("X1")))
-                                                    , 16)
-                                                , mk_set(mk_var("x",0), Triv::MRef(mk_reg("rax"),Offset::Num(10)))]
-                                           , Box::new(mk_call("void"))))
-                                       , Box::new(
-                                           Exp::Begin(
-                                             vec![mk_set_op(mk_reg("rax"), Binop::Plus, as_var_triv(mk_reg("rax")), mk_num_lit(10))]
-                                            , Box::new(mk_call("void")))))
-                              )
-               ]
-         , body_map
-         , Exp::Begin(
-            vec![ mk_set(mk_var("x",2), mk_num_lit(0))
-                , mk_set(mk_var("x",3), mk_num_lit(1))
-                ]
-            , Box::new(mk_call("X1"))));
+  fn mk_spills_form(input_spills : Vec<Ident>, input_frame_conflicts : Vec<(Ident, Vec<Ident>)>) -> RegAllocInfo
+  { RegAllocInfo
+    { locsl              : Vec::new()
+    , unspillables       : Vec::new()
+    , spills             : input_spills
+    , frame_conflicts    : input_frame_conflicts
+    , register_conflicts : Vec::new()
+    }
+  }
+
+  fn test1() -> Program {
+
+    let x0 = mk_uvar("x");
+    let x1 = mk_uvar("x");
+    let x2 = mk_uvar("x");
+    let x3 = mk_uvar("x");
+    let y4 = mk_uvar("y");
+
+    let z5 = mk_uvar("z");
+    let z6 = mk_uvar("z");
+    let z7 = mk_uvar("z");
+    let z8 = mk_uvar("z");
+    let z9 = mk_uvar("z");
+
+    let z10 = mk_uvar("z");
+    let z11 = mk_uvar("z");
+    let z12 = mk_uvar("z");
+
+    let mut map = HashMap::new();
+    map.insert(x0, mk_loc_reg("rbx"));
+    map.insert(x1, Location::FrameVar(2));
+    map.insert(x2, mk_loc_reg("r8"));
+    map.insert(x3, mk_loc_reg("r9"));
+    map.insert(y4, mk_loc_reg("r15"));
+
+    let mut body_map = HashMap::new();
+    body_map.insert(x2, mk_loc_reg("r8"));
+    body_map.insert(x3, mk_loc_reg("r9"));
+
+    let [fc0, fc1, fc2, fc3] = vec![0, 1, 2, 3, 4].into_iter().map(|e| framevar_to_conflict(index_fvar(e))).collect();
+
+    let binding1_alloc = 
+      mk_spills_form( vec![z9, z10, z11, z12]
+                    , vec![ (z5, vec![z6, z7, fc0])
+                          , (z6, vec![z5, z7, fc1, fc3])
+                          , (z7, vec![z5, z6, fc3])
+                          , (z8, vec![fc3, fc4])]);
+
+
+    let binding1 = 
+      LetrecEntry
+      { label : mk_lbl("X1")
+      , rhs : Body
+              { alloc : RegAllocForm::Unallocated(binding1_alloc, map)
+              , expression : ife(rop(Relop::LT, vt(x2), vt(x3))
+                                , begine(vec![ setopf(vt(x1), Binop::Plus, vt(x1), nt(35)) 
+                                             , msetf(vt(x0), nt(1), nt(40))
+                                             , msetf(vt(x0), vt(y4), nt(25))
+                                             , retf(mk_lbl("foo"), 4,
+                                                    begine( vec![ setf(reg("rax"), fvar(1)) ]
+                                                          , calle(mk_lbl("X3"), vec![])) ) 
+                                             , mset(vt(x0), mreft(reg("rax"), nt(1)))
+                                             ]
+                                        , calle(mk_lbl("X2"), vec![])))
+                                , begine(vec![ setopf(vt(x1), Binop::Plus, vt(x1), nt(35)) ]
+                                        , calle(mk_lbl("X2"), vec![]))
+              }
+      };
+
+    let mut body_map = HashMap::new();
+    body_map.insert(x2, mk_loc_reg("r8"));
+    body_map.insert(x3, mk_loc_reg("r9"));
+
+
+    let test_body = 
+      Body 
+      { alloc : RegAllocForm::Allocated(body_map)
+      , expression : begine(vec![ setf(vt(x2), nt(0))
+                                , setf(vt(x3), nt(1))
+                                ]
+                           , calle(mk_lbl("X1"), vec![reg("rax"), reg("rbp")]))
+      };
+
+    Program::Letrec(vec![binding1], test_body)
+  }
+
 }

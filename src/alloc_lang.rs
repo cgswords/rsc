@@ -6,6 +6,7 @@ use util::Binop;
 
 use std::collections::HashMap;
 
+// ---------------------------------------------------------------------------
 #[derive(Debug)]
 pub enum Program { Letrec(Vec<LetrecEntry>, Body) }
 
@@ -32,8 +33,8 @@ pub struct RegAllocInfo
   { locals            : Vec<Ident>
   , unspillables      : Vec<Ident>
   , spills            : Vec<Ident>
-  , frame_conflits    : Vec<(Ident, Vec<Ident>)>
-  , register_conflits : Vec<(Ident, Vec<Ident>)>
+  , frame_conflicts   : Vec<(Ident, Vec<FrameConflict>)>
+  , register_conflits : Vec<(Ident, Vec<RegConflict>)>
   }
 
 #[derive(Debug)]
@@ -76,3 +77,38 @@ pub enum Triv
   , Label(Label)
   , MRef(Box<Triv>, Box<Triv>)
   }
+
+// ---------------------------------------------------------------------------
+#[derive(Debug, Clone, Copy)]
+pub enum FrameConflict
+  { Var(Ident)
+  , FrameVar(i64)
+  }
+
+pub fn framevar_to_conflict(l : Location) -> FrameConflict {
+  match l
+  { Location::FrameVar(n) => FrameConflict::FrameVar(n)
+  , Location::Reg(r)      => panic!("Tried to convert register {:?} to a frame variable", r)
+  }
+}
+
+pub fn var_to_frame_conflict(id : Ident) -> FrameConflict {
+  FrameConflict::Reg(id)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum RegConflict
+  { Var(Ident)
+  , Reg(Ident)
+  }
+
+pub fn var_to_reg_conflict(id : Ident) -> RegConflict {
+  RegConflict::Reg(id)
+}
+
+pub fn reg_to_conflict(l : Location) -> RegConflict {
+  match l
+  { Location::FrameVar(n) =>  panic!("Tried to convert frame var {:?} to a frame variable", n)
+  , Location::Reg(r)      => RegConflict:Reg(r)
+  }
+}
