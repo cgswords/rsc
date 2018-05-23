@@ -13,27 +13,29 @@
 // these new locations.
 //// ---------------------------------------------------------------------------
 
-use util::Binop;
-use util::Relop;
-use util::Label;
+// use util::Binop;
+// use util::Relop;
+// use util::Label;
 use util::Ident;
 use util::Location;
-use util::mk_uvar;
+// use util::mk_uvar;
 use util::frame_index;
+use util::index_fvar;
 
 use alloc_lang::Program;
-use alloc_lang::Letrec;
+use alloc_lang::LetrecEntry;
 use alloc_lang::RegAllocForm;
-use alloc_lang::RegAllocInfo;
-use alloc_lang::Exp;
-use alloc_lang::Pred;
-use alloc_lang::Effect;
-use alloc_lang::Variable;
-use alloc_lang::Triv;
-use alloc_lang::Offset;
+// use alloc_lang::RegAllocInfo;
+use alloc_lang::Body;
+// use alloc_lang::Exp;
+// use alloc_lang::Pred;
+// use alloc_lang::Effect;
+// use alloc_lang::Variable;
+// use alloc_lang::Triv;
+use alloc_lang::FrameConflict;
 
 use std::collections::HashMap;
-use std::collections::HashSet;
+use std::cmp::max;
 
 // ---------------------------------------------------------------------------
 // INPUT / OUTPUT LANGUAGE
@@ -54,19 +56,17 @@ use std::collections::HashSet;
 //   , exp : Exp
 //   }
 // 
-// #[derive(Debug)]
 // pub enum RegAllocForm
 // 	{ Allocated(HashMap<Ident, Location>)
 //  , Unallocated(mut RegAllocInfo, mut HashMap<Ident, Location>)
 //  }
 // 
-// #[derive(Debug)]
 // pub struct RegAllocInfo 
-//   { locals            : mut Vec<Ident>
-//   , unspillables      : mut Vec<Ident>
-//   , spills            : mut Vec<Ident>
-//   , frame_conflits    : mut Vec<(Ident, mut Vec<Ident>)>
-//   , register_conflits : mut Vec<(Ident, mut Vec<Ident>)>
+//   { pub locals             : Vec<Ident>
+//   , pub unspillables       : Vec<Ident>
+//   , pub spills             : Vec<Ident>
+//   , pub frame_conflicts    : Vec<(Ident, Vec<FrameConflict>)>
+//   , pub register_conflicts : Vec<(Ident, Vec<RegConflict>)>
 //   }
 //
 // pub enum Exp 
@@ -105,10 +105,17 @@ use std::collections::HashSet;
 //   , MRef(Triv, Triv)
 //   }
 // 
-// pub enum Offset
-//   { UVar(Ident)
-//   , Num(i64)
+//pub enum FrameConflict
+//  { Var(Ident)
+//  , FrameVar(i64)
+//  }
+//
+// pub enum RegConflict
+//   { Var(Ident)
+//   , Reg(Ident)
 //   }
+
+
 
 // ---------------------------------------------------------------------------
 // IMPLEMENTATION
@@ -121,36 +128,41 @@ pub fn assign_frame(input : Program) -> Program {
   }  
 }
 
-fn letrec_entry(input : Letrec) -> LetrecEntry {
+fn letrec_entry(input : LetrecEntry) -> LetrecEntry {
   LetrecEntry 
   { label : input.label
-  , rhs   : body(rhs)
+  , rhs   : body(input.rhs)
   }
 }
 
 fn body(input: Body) -> Body {
   match input.alloc
-  { RegAllocForm::Allocated(_, _)               => Body { alloc : input.alloc , exp : input.exp }
-  , RegAllocForm::Unallocated(alloc_info, locs) => {
+  { RegAllocForm::Allocated(_)                  => Body { alloc : input.alloc , expression : input.expression }
+  , RegAllocForm::Unallocated(mut alloc_info, mut locs) => {
       let mut new_frame_locs = assign_frame_vars(&locs, &alloc_info.frame_conflicts, &alloc_info.spills);
-      locs.append(new_frame_locs);
+
+      for (k,v) in new_frame_locs.into_iter() {
+        locs.insert(k,v);
+      }
+      
       alloc_info.spills.clear();
-      Body { alloc : RegAllocForm(alloc_info, locs, rhs) , exp : input.exp }
+      Body { alloc : RegAllocForm::Unallocated(alloc_info, locs)
+           , expression : input.expression }
     }
   }
 }
 
-fn var_frame_index(v: &FrameConflict) -> i64 {
+fn var_frame_index(input: &FrameConflict) -> i64 {
   match input 
-  { FrameConflict::UVar(l)     => -1
-  , FrameConflict::FrameVar(i) => i
+  { FrameConflict::Var(_)     => -1
+  , FrameConflict::FrameVar(i) => i.clone()
   }
 }
 
-fn max_frame_index(locs : &HashSet<Ident, Location>, conflicts : &Vec<(Ident, Vec<Ident>)) -> i64 {
+fn max_frame_index(locs : &HashMap<Ident, Location>, conflicts : &Vec<(Ident, Vec<FrameConflict>)>) -> i64 {
   let location_max = locs.values().cloned().fold(0, |acc, x| max(acc, frame_index(x)));
 
-  let conflict_max = conflicts.iter().fold(0, |cur_max, (var, conflict)| 
+  let conflict_max = conflicts.iter().fold(0, |cur_max, (_, conflict)| 
                                                 max(cur_max, 
                                                     conflict.iter().fold(0, |acc, x| max(acc, var_frame_index(x)))));
 
@@ -158,16 +170,16 @@ fn max_frame_index(locs : &HashSet<Ident, Location>, conflicts : &Vec<(Ident, Ve
 }
 
 fn assign_frame_vars( cur_locs  : &HashMap<Ident, Location>
-                    , conflicts : &Vec<(Ident, Vec<Variable>)
+                    , conflicts : &Vec<(Ident, Vec<FrameConflict>)>
                     , spills    : &Vec<Ident>) ->
-                    mut HashMap<Ident, location> 
+                    HashMap<Ident, Location> 
 {
-    let next_frame_index = max_frame_index(cur_locs, conflicts) + 1;
+    let mut next_frame_index = max_frame_index(cur_locs, conflicts) + 1;
 
     let mut result = HashMap::new();
 
     for spill in spills {
-      result.insert(spill, index_fvar(next_frame_index));
+      result.insert(spill.clone(), index_fvar(next_frame_index));
       next_frame_index += 1;
     }
      
@@ -178,9 +190,35 @@ fn assign_frame_vars( cur_locs  : &HashMap<Ident, Location>
 // TESTING
 // ---------------------------------------------------------------------------
 
-mod test {
+pub mod test {
 
-  use alloc_lang::framevar_to_conflict;
+  macro_rules! mk_box {
+    ($e:expr) => [Box::new($e)]
+  }
+
+  use util::index_fvar;
+  use util::mk_uvar;
+  use util::Binop;
+  use util::Relop;
+  use util::Label;
+  use util::Ident;
+  use util::Location;
+
+  use alloc_lang::Program;
+  use alloc_lang::LetrecEntry;
+  use alloc_lang::RegAllocForm;
+  use alloc_lang::RegAllocInfo;
+  use alloc_lang::Exp;
+  use alloc_lang::Pred;
+  use alloc_lang::Body;
+  use alloc_lang::Effect;
+  use alloc_lang::Variable;
+  use alloc_lang::Triv;
+  use alloc_lang::FrameConflict;
+  use alloc_lang::fvar_to_conflict;
+  use alloc_lang::var_to_frame_conflict;
+
+  use std::collections::HashMap;
 
   fn calle(call : Triv, args : Vec<Location>) -> Exp { Exp::Call(call, args) }
 
@@ -216,17 +254,21 @@ mod test {
   
   fn lt(lbl : Label) -> Triv { Triv::Label(lbl) }
   
-  fn mreft(src : Triv, offset : Triv) -> Triv { Triv::(mk_box!(src), mk_box!(offset)) }
+  fn mreft(src : Triv, offset : Triv) -> Triv { Triv::MRef(mk_box!(src), mk_box!(offset)) }
 
-  fn fv(n: i64) -> Triv { return Triv::Var(Variable::Loc(Location::FrameVar(Ident::from_str(s)))); }
+  fn fvar(n: i64) -> Triv { Triv::Var(Variable::Loc(index_fvar(n))) }
 
-  fn reg(s: &str) -> Triv { return Triv::Var(Variable::Loc(Location::Reg(Ident::from_str(s)))); }
+  fn reg(s: &str) -> Triv { Triv::Var(Variable::Loc(Location::Reg(Ident::from_str(s)))) }
+  
+  fn regl(s: &str) -> Location { Location::Reg(Ident::from_str(s)) }
 
-  fn mk_lbl(s : &str) -> Label { return Label::Label(s.to_string()); }
+  fn mk_lbl(s : &str) -> Label { Label { label : Ident::from_str(s) } }
 
-  fn mk_spills_form(input_spills : Vec<Ident>, input_frame_conflicts : Vec<(Ident, Vec<Ident>)>) -> RegAllocInfo
+  fn mk_conflict(n : i64) -> FrameConflict { fvar_to_conflict(index_fvar(n)) }
+
+  fn mk_spills_form(input_spills : Vec<Ident>, input_frame_conflicts : Vec<(Ident, Vec<FrameConflict>)>) -> RegAllocInfo
   { RegAllocInfo
-    { locsl              : Vec::new()
+    { locals             : Vec::new()
     , unspillables       : Vec::new()
     , spills             : input_spills
     , frame_conflicts    : input_frame_conflicts
@@ -234,7 +276,7 @@ mod test {
     }
   }
 
-  fn test1() -> Program {
+  pub fn test1() -> Program {
 
     let x0 = mk_uvar("x");
     let x1 = mk_uvar("x");
@@ -253,24 +295,27 @@ mod test {
     let z12 = mk_uvar("z");
 
     let mut map = HashMap::new();
-    map.insert(x0, mk_loc_reg("rbx"));
-    map.insert(x1, Location::FrameVar(2));
-    map.insert(x2, mk_loc_reg("r8"));
-    map.insert(x3, mk_loc_reg("r9"));
-    map.insert(y4, mk_loc_reg("r15"));
+    map.insert(x0, regl("rbx"));
+    map.insert(z6, Location::FrameVar(2));
+    map.insert(x2, regl("r8"));
+    map.insert(x3, regl("r9"));
+    map.insert(y4, regl("r15"));
 
     let mut body_map = HashMap::new();
-    body_map.insert(x2, mk_loc_reg("r8"));
-    body_map.insert(x3, mk_loc_reg("r9"));
+    body_map.insert(x2, regl("r8"));
+    body_map.insert(x3, regl("r9"));
 
-    let [fc0, fc1, fc2, fc3] = vec![0, 1, 2, 3, 4].into_iter().map(|e| framevar_to_conflict(index_fvar(e))).collect();
+    let fc0 = mk_conflict(0);
+    let fc1 = mk_conflict(1);
+    let fc2 = mk_conflict(2);
+    let fc3 = mk_conflict(3);
 
     let binding1_alloc = 
       mk_spills_form( vec![z9, z10, z11, z12]
-                    , vec![ (z5, vec![z6, z7, fc0])
-                          , (z6, vec![z5, z7, fc1, fc3])
-                          , (z7, vec![z5, z6, fc3])
-                          , (z8, vec![fc3, fc4])]);
+                    , vec![ (z5, vec![var_to_frame_conflict(z6), var_to_frame_conflict(z7), fc0])
+                          , (z6, vec![var_to_frame_conflict(z5), fc1, fc2])
+                          , (z7, vec![var_to_frame_conflict(z5), var_to_frame_conflict(z6), fc3])
+                          , (z8, vec![fc3, fc2, fc0])]);
 
 
     let binding1 = 
@@ -284,18 +329,18 @@ mod test {
                                              , msetf(vt(x0), vt(y4), nt(25))
                                              , retf(mk_lbl("foo"), 4,
                                                     begine( vec![ setf(reg("rax"), fvar(1)) ]
-                                                          , calle(mk_lbl("X3"), vec![])) ) 
-                                             , mset(vt(x0), mreft(reg("rax"), nt(1)))
+                                                          , calle(lt(mk_lbl("X3")), vec![])) ) 
+                                             , setf(vt(x0), mreft(reg("rax"), nt(1)))
                                              ]
-                                        , calle(mk_lbl("X2"), vec![])))
+                                        , calle(lt(mk_lbl("X2")), vec![]))
                                 , begine(vec![ setopf(vt(x1), Binop::Plus, vt(x1), nt(35)) ]
-                                        , calle(mk_lbl("X2"), vec![]))
+                                        , calle(lt(mk_lbl("X2")), vec![])))
               }
       };
 
     let mut body_map = HashMap::new();
-    body_map.insert(x2, mk_loc_reg("r8"));
-    body_map.insert(x3, mk_loc_reg("r9"));
+    body_map.insert(x2, regl("r8"));
+    body_map.insert(x3, regl("r9"));
 
 
     let test_body = 
@@ -304,7 +349,7 @@ mod test {
       , expression : begine(vec![ setf(vt(x2), nt(0))
                                 , setf(vt(x3), nt(1))
                                 ]
-                           , calle(mk_lbl("X1"), vec![reg("rax"), reg("rbp")]))
+                           , calle(lt(mk_lbl("X1")), vec![regl("rax"), regl("rbp")]))
       };
 
     Program::Letrec(vec![binding1], test_body)

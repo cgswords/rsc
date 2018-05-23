@@ -193,7 +193,7 @@ macro_rules! mk_box {
 
 fn exp(input : Exp) -> FLExp {
   return match input 
-  { Exp::Call(t, call_lives)  => FLExp::Call(triv(t))
+  { Exp::Call(t, _)            => FLExp::Call(triv(t))
   , Exp::If(test, conseq, alt) => FLExp::If(pred(test), mk_box!(exp(*conseq)), mk_box!(exp(*alt)))
   , Exp::Begin(effs, body)     => FLExp::Begin(effs.into_iter().map(|e| effect(e)).collect(), mk_box!(exp(*body)))
   }

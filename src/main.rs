@@ -40,6 +40,9 @@ use discard_allocation_info::discard_allocation_info;
 mod finalize_instruction_selection;
 use finalize_instruction_selection::finalize_instruction_selection;
 
+mod assign_frame;
+use assign_frame::assign_frame;
+
 fn main() {
 
    // TODO: write a pass to optimize jumps
@@ -176,23 +179,8 @@ fn main() {
    
    println!("{}",output18);
 
-   let output19 = assign_frame(assign_frame::test1());
+   let output19 = assign_frame(assign_frame::test::test1());
    
    println!("{:?}",output19);
 
-   let output20 : String =
-    generate_x86_64(
-    flatten_program(
-    expose_basic_blocks(
-    expose_memory_operands(
-    expose_frame_pointer(
-    expose_frame_variables(
-    finalize_locations(
-    discard_call_lives(
-    discard_allocation_info(
-    finalize_instruction_selection(
-    assign_frame(
-      assign_frame::test1()))))))))))); 
-   
-   println!("{}",output20); 
 }

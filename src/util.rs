@@ -20,7 +20,7 @@ pub enum Relop
 
 #[derive(Debug,Clone, Copy)]
 pub struct Label {
-  label : Ident  
+  pub label : Ident  
 }
 
 impl Label {

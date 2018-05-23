@@ -30,11 +30,11 @@ pub enum RegAllocForm
 
 #[derive(Debug)]
 pub struct RegAllocInfo 
-  { locals            : Vec<Ident>
-  , unspillables      : Vec<Ident>
-  , spills            : Vec<Ident>
-  , frame_conflicts   : Vec<(Ident, Vec<FrameConflict>)>
-  , register_conflits : Vec<(Ident, Vec<RegConflict>)>
+  { pub locals             : Vec<Ident>
+  , pub unspillables       : Vec<Ident>
+  , pub spills             : Vec<Ident>
+  , pub frame_conflicts    : Vec<(Ident, Vec<FrameConflict>)>
+  , pub register_conflicts : Vec<(Ident, Vec<RegConflict>)>
   }
 
 #[derive(Debug)]
@@ -85,7 +85,7 @@ pub enum FrameConflict
   , FrameVar(i64)
   }
 
-pub fn framevar_to_conflict(l : Location) -> FrameConflict {
+pub fn fvar_to_conflict(l : Location) -> FrameConflict {
   match l
   { Location::FrameVar(n) => FrameConflict::FrameVar(n)
   , Location::Reg(r)      => panic!("Tried to convert register {:?} to a frame variable", r)
@@ -93,7 +93,7 @@ pub fn framevar_to_conflict(l : Location) -> FrameConflict {
 }
 
 pub fn var_to_frame_conflict(id : Ident) -> FrameConflict {
-  FrameConflict::Reg(id)
+  FrameConflict::Var(id)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -103,12 +103,12 @@ pub enum RegConflict
   }
 
 pub fn var_to_reg_conflict(id : Ident) -> RegConflict {
-  RegConflict::Reg(id)
+  RegConflict::Var(id)
 }
 
 pub fn reg_to_conflict(l : Location) -> RegConflict {
   match l
   { Location::FrameVar(n) =>  panic!("Tried to convert frame var {:?} to a frame variable", n)
-  , Location::Reg(r)      => RegConflict:Reg(r)
+  , Location::Reg(r)      => RegConflict::Reg(r)
   }
 }
