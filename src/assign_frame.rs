@@ -154,6 +154,24 @@ fn body(input: Body) -> Body {
   }
 }
 
+// ---------------------------------------------------------------------------
+
+fn assign_frame_vars( cur_locs  : &HashMap<Ident, Location>
+                    , conflicts : &Graph<FrameConflict, (), Undirected>
+                    , spills    : &Vec<Ident>) ->
+                    HashMap<Ident, Location> 
+{
+    let mut next_frame_index = max_frame_index(cur_locs, conflicts) + 1;
+    let mut result = HashMap::new();
+
+    for spill in spills {
+      result.insert(spill.clone(), index_fvar(next_frame_index));
+      next_frame_index += 1;
+    }
+     
+    result
+}
+
 fn conflict_frame_index(input: &FrameConflict) -> i64 {
   match input 
   { FrameConflict::Var(_)     => -1
@@ -171,22 +189,7 @@ fn max_frame_index(locs : &HashMap<Ident, Location>, conflicts : &Graph<FrameCon
   max(conflict_max, location_max)
 }
 
-fn assign_frame_vars( cur_locs  : &HashMap<Ident, Location>
-                    , conflicts : &Graph<FrameConflict, (), Undirected>
-                    , spills    : &Vec<Ident>) ->
-                    HashMap<Ident, Location> 
-{
-    let mut next_frame_index = max_frame_index(cur_locs, conflicts) + 1;
 
-    let mut result = HashMap::new();
-
-    for spill in spills {
-      result.insert(spill.clone(), index_fvar(next_frame_index));
-      next_frame_index += 1;
-    }
-     
-    result
-}
 
 // ---------------------------------------------------------------------------
 // TESTING
