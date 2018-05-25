@@ -1,16 +1,18 @@
-// PASS    | assign_frame
+// PASS    | assign_registers
 // ---------------------------------------------------------------------------
-// USAGE   | assign_frame : assign_frame::Program -> 
-//         |                discard_call_live::Program
+// USAGE   | assign_registers : alloc_lang::Program -> 
+//         |                    assign_frame::Program
 // ---------------------------------------------------------------------------
-// RETURNS | The expression with the spillled variable list discarded, with
-//         | spills now being placed onto the frame.
+// RETURNS | The expression with register alloctions (or updated spills).
 // ---------------------------------------------------------------------------
 // DESCRIPTION
 // ---------------------------------------------------------------------------
-// This pass walks through the spills, and each spilled variable gets a
-// frame location. We update the location vector for each binding to reflect
-// these new locations.
+// This pass performs a graph-coloring-style register allocation, wherein we
+// recursively color the conflict graph nodes with register colors until either
+// everything is colored or we have a list of variables to spill.
+//
+// If everything is colored, we finalize allocation. If not, we push spills
+// into the spill form and continue.
 //// ---------------------------------------------------------------------------
 
 // use util::Binop;
@@ -32,6 +34,10 @@ use alloc_lang::Body;
 // use alloc_lang::Variable;
 // use alloc_lang::Triv;
 use alloc_lang::RegConflict;
+
+use petgraph::graph::Graph;
+use petgraph::graph::NodeIndex;
+use petgraph::Undirected;
 
 use std::collections::HashMap;
 
@@ -137,7 +143,12 @@ fn body(input: Body) -> Body {
   match input.alloc
   { RegAllocForm::Allocated(_)                  => Body { alloc : input.alloc , expression : input.expression }
   , RegAllocForm::Unallocated(mut alloc_info, mut locs) => {
-      let (allocs, spills) = allocate(&mut alloc_info.register_conflicts, REGISTERS.clone());
+      let mut var_registers = 
+        alloc_info.register_conflicts.node_indices()
+                                     .filter(|n| alloc_info.register_conflicts.node_weight(*n).unwrap().is_var())
+                                     .collect();
+
+      let (allocs, spills) = allocate(&mut var_registers, &mut alloc_info.register_conflicts, REGISTERS.clone());
       if spills.is_empty() {
         return Body { alloc : RegAllocForm::Allocated(allocs), expression : input.expression };
       } else {
@@ -149,52 +160,60 @@ fn body(input: Body) -> Body {
   }
 }
 
-fn select_highest_incident_node(graph : &mut Vec<(Ident, Vec<RegConflict>)>) -> usize {
-  let (first_node, ref first_edges) = graph[0];
-  
-  let mut index : usize                = 0;
-  let mut highest_index : usize        = 0;
-  let mut highest_incident : usize     = first_edges.len();
+fn select_highest_incident_node(nodes: &mut Vec<NodeIndex>, conflicts : &mut Graph<RegConflict, (), Undirected>) -> NodeIndex {
+  let mut best_node : NodeIndex = nodes.pop().unwrap();
+  let mut best_size : usize     = conflicts.neighbors(best_node).count();
 
-  while index < graph.len() {
-    let (this_node, ref this_conflicts) = graph[index];
-    let size = this_conflicts.len();
-
-    if size > highest_incident {
-      highest_incident                = size;
-      highest_index                   = index;
+  for node in nodes {
+    let new_size = conflicts.neighbors(node.clone()).count();
+    if new_size > best_size {
+      best_size = new_size;
+      best_node = *node;
     }
-    index = index + 1;
   }
 
-  highest_index
+  best_node
 }
 
 // Returns a set of new allocations and a set of newly-spilled variables.
-fn allocate(conflicts : &mut Vec<(Ident, Vec<RegConflict>)>, registers : Vec<Location>) 
+fn allocate(nodes : &mut Vec<NodeIndex>, conflicts : &mut Graph<RegConflict, (), Undirected>, registers : Vec<Location>) 
            -> (HashMap<Ident, Location>, Vec<Ident>) {
 
-  if conflicts.is_empty() {
+  if nodes.is_empty() {
     return (HashMap::new(), Vec::new())
   }
 
-  // pull out the node with the highest incident
-  let index = select_highest_incident_node(conflicts);
-  let (node, node_conflicts) = conflicts.remove(index);
+  let node : NodeIndex = select_highest_incident_node(&mut nodes.clone(), conflicts);
+  let node_conflicts : Vec<RegConflict> = conflicts.neighbors(node).map(|n| conflicts.node_weight(n).unwrap().clone()).collect::<Vec<_>>();
+  let node_id : RegConflict = conflicts.node_weight(node).unwrap().clone();
+
+  let node_index = nodes.iter().position(|&r| r == node).unwrap();
+  nodes.remove(node_index);
+  conflicts.remove_node(node);
+  
+  // if conflicts.is_empty() {
+  //   return (HashMap::new(), Vec::new())
+  // }
+
+  // // pull out the node with the highest incident
+  // let index = select_highest_incident_node(conflicts);
+  // let (node, node_conflicts) = conflicts.remove(index);
 
   // recur without it
-  let allocs_spills = allocate(conflicts, registers.clone());
+  let allocs_spills = allocate(nodes, conflicts, registers.clone());
   let mut allocations   = allocs_spills.0;
   let mut spills        = allocs_spills.1;
 
   // compute all the conflicts in our node's conflict entry that haven't been spilled
-  let unspilled_conflicts : Vec<RegConflict> = node_conflicts.into_iter().filter(|id| !spills.contains(&regconflict_id(*id))).collect();
+  let unspilled_conflicts : Vec<RegConflict> = node_conflicts.into_iter()
+                                                             .filter(|conflict| !spills.contains(&regconflict_id(node_id.clone())))
+                                                             .collect();
 
   // compute all the allocated registers for our conflicts
   let conflict_registers  : Vec<Location> = (&allocations).clone().into_iter()
                                                           .filter(|(id, loc)| unspilled_conflicts.contains(&RegConflict::Var(id.clone())))
                                                           .map(|(id, loc)| loc)
-                                                           .collect();
+                                                          .collect();
 
   // This can be much nicer when Vec's remove_item stabilizes
   // Compute all the registers that we are allowed to use
@@ -207,9 +226,9 @@ fn allocate(conflicts : &mut Vec<(Ident, Vec<RegConflict>)>, registers : Vec<Loc
                                                     .collect();
 
   if possible_registers.is_empty() {
-    spills.push(node);
+    spills.push(regconflict_id(node_id));
   } else {
-    allocations.insert(node, possible_registers[0]);
+    allocations.insert(regconflict_id(node_id), possible_registers[0]);
   }
 
   (allocations, spills)
@@ -261,6 +280,8 @@ pub mod test {
   use alloc_lang::reg_to_conflict;
   use alloc_lang::var_to_reg_conflict;
 
+  use petgraph::Undirected;
+  use petgraph::graph::Graph;
   use std::collections::HashMap;
 
   fn calle(call : Triv, args : Vec<Location>) -> Exp { Exp::Call(call, args) }
@@ -307,12 +328,12 @@ pub mod test {
 
   fn mk_lbl(s : &str) -> Label { Label { label : Ident::from_str(s) } }
 
-  fn mk_alloc_form(input_reg_conflicts : Vec<(Ident, Vec<RegConflict>)>) -> RegAllocInfo
+  fn mk_alloc_form(input_reg_conflicts : Graph<RegConflict, (), Undirected>) -> RegAllocInfo
   { RegAllocInfo
     { locals             : Vec::new()
     , unspillables       : Vec::new()
     , spills             : Vec::new()
-    , frame_conflicts    : Vec::new()
+    , frame_conflicts    : Graph::new_undirected()
     , register_conflicts : input_reg_conflicts
     }
   }
@@ -346,12 +367,34 @@ pub mod test {
     body_map.insert(x2, regl("r8"));
     body_map.insert(x3, regl("r9"));
 
-    let binding1_alloc = 
-      mk_alloc_form(vec![ (x0, vec![var_to_reg_conflict(x1), var_to_reg_conflict(x2), reg_to_conflict(regl("rax"))])
-                        , (x1, vec![var_to_reg_conflict(x0), reg_to_conflict(regl("r12")),  reg_to_conflict(regl("rbp"))])
-                        , (x2, vec![var_to_reg_conflict(x0), reg_to_conflict(regl("r10")), reg_to_conflict(regl("r9"))])
-                        , (x3, vec![reg_to_conflict(regl("r11")), reg_to_conflict(regl("r10")), reg_to_conflict(regl("r9"))])]);
+    let mut rc_b1 : Graph<RegConflict, (), Undirected> = Graph::new_undirected();
+    let x0n  = rc_b1.add_node(var_to_reg_conflict(x0));
+    let x1n  = rc_b1.add_node(var_to_reg_conflict(x1));
+    let x2n  = rc_b1.add_node(var_to_reg_conflict(x2));
+    let x3n  = rc_b1.add_node(var_to_reg_conflict(x3));
+    let nrax = rc_b1.add_node(reg_to_conflict(regl("rax")));
+    let nrbp = rc_b1.add_node(reg_to_conflict(regl("rbp")));
+    let nr10 = rc_b1.add_node(reg_to_conflict(regl("r10")));
+    let nr11 = rc_b1.add_node(reg_to_conflict(regl("r11")));
+    let nr12 = rc_b1.add_node(reg_to_conflict(regl("r12")));
+    let nr9  = rc_b1.add_node(reg_to_conflict(regl("r9")));
 
+    rc_b1.add_edge(x0n, x1n, ());
+    rc_b1.add_edge(x0n, x2n, ());
+    rc_b1.add_edge(x0n, nrax, ());
+    rc_b1.add_edge(x1n, x0n, ());
+    rc_b1.add_edge(x1n, nr12, ());
+    rc_b1.add_edge(x1n, nrbp, ());
+    rc_b1.add_edge(x2n, x0n, ());
+    rc_b1.add_edge(x2n, nr10, ());
+    rc_b1.add_edge(x2n, nr9, ());
+    rc_b1.add_edge(x3n, nr11, ());
+    rc_b1.add_edge(x3n, nr10, ());
+    rc_b1.add_edge(x3n, nr9, ());
+
+    println!("Graph: {:?}", rc_b1);
+
+    let binding1_alloc = mk_alloc_form(rc_b1);
 
     let binding1 = 
       LetrecEntry

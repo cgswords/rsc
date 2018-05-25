@@ -3,6 +3,8 @@ extern crate string_interner;
 #[macro_use(lazy_static,__lazy_static_create,__lazy_static_internal)]
 extern crate lazy_static;
 
+extern crate petgraph;
+
 mod util;
 mod interner;
 mod alloc_lang;

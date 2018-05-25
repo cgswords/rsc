@@ -1,11 +1,13 @@
+use std::fmt;
+use std::collections::HashMap;
+use petgraph::graph::Graph;
+use petgraph::Undirected;
+
 use util::Label;
 use util::Location;
 use util::Ident;
 use util::Relop;
 use util::Binop;
-
-use std::fmt;
-use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
 #[derive(Debug)]
@@ -53,8 +55,8 @@ pub struct RegAllocInfo
   { pub locals             : Vec<Ident>
   , pub unspillables       : Vec<Ident>
   , pub spills             : Vec<Ident>
-  , pub frame_conflicts    : Vec<(Ident, Vec<FrameConflict>)>
-  , pub register_conflicts : Vec<(Ident, Vec<RegConflict>)>
+  , pub frame_conflicts    : Graph<FrameConflict, (), Undirected>
+  , pub register_conflicts : Graph<RegConflict, (), Undirected>
   }
 
 impl fmt::Debug for RegAllocInfo {
@@ -128,6 +130,17 @@ pub enum RegConflict
   { Var(Ident)
   , Reg(Ident)
   }
+
+impl RegConflict {
+  pub fn is_var(&self) -> bool {
+    match self
+    { RegConflict::Var(_) => true
+    , RegConflict::Reg(_) => false
+    }
+  }
+
+  pub fn is_reg(&self) -> bool { !self.is_var() }
+}
 
 pub fn var_to_reg_conflict(id : Ident) -> RegConflict {
   RegConflict::Var(id)

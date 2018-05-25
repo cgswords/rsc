@@ -1,7 +1,7 @@
 // PASS    | assign_frame
 // ---------------------------------------------------------------------------
-// USAGE   | assign_frame : assign_frame::Program -> 
-//         |                discard_call_live::Program
+// USAGE   | assign_frame : alloc_lang::Program -> 
+//         |                alloc_lang::Program
 // ---------------------------------------------------------------------------
 // RETURNS | The expression with the spillled variable list discarded, with
 //         | spills now being placed onto the frame.
@@ -36,6 +36,8 @@ use alloc_lang::FrameConflict;
 
 use std::collections::HashMap;
 use std::cmp::max;
+use petgraph::graph::Graph;
+use petgraph::Undirected;
 
 // ---------------------------------------------------------------------------
 // INPUT / OUTPUT LANGUAGE
@@ -152,25 +154,25 @@ fn body(input: Body) -> Body {
   }
 }
 
-fn var_frame_index(input: &FrameConflict) -> i64 {
+fn conflict_frame_index(input: &FrameConflict) -> i64 {
   match input 
   { FrameConflict::Var(_)     => -1
   , FrameConflict::FrameVar(i) => i.clone()
   }
 }
 
-fn max_frame_index(locs : &HashMap<Ident, Location>, conflicts : &Vec<(Ident, Vec<FrameConflict>)>) -> i64 {
+fn max_frame_index(locs : &HashMap<Ident, Location>, conflicts : &Graph<FrameConflict, (), Undirected>) -> i64 {
   let location_max = locs.values().cloned().fold(0, |acc, x| max(acc, frame_index(x)));
 
-  let conflict_max = conflicts.iter().fold(0, |cur_max, (_, conflict)| 
-                                                max(cur_max, 
-                                                    conflict.iter().fold(0, |acc, x| max(acc, var_frame_index(x)))));
+  let conflict_max = conflicts.node_indices()
+                              .map(|n| conflicts.node_weight(n).unwrap().clone())
+                              .fold(0, |cur_max, conflict| max(cur_max, conflict_frame_index(&conflict)));
 
-  return max(conflict_max, location_max);
+  max(conflict_max, location_max)
 }
 
 fn assign_frame_vars( cur_locs  : &HashMap<Ident, Location>
-                    , conflicts : &Vec<(Ident, Vec<FrameConflict>)>
+                    , conflicts : &Graph<FrameConflict, (), Undirected>
                     , spills    : &Vec<Ident>) ->
                     HashMap<Ident, Location> 
 {
@@ -218,6 +220,8 @@ pub mod test {
   use alloc_lang::fvar_to_conflict;
   use alloc_lang::var_to_frame_conflict;
 
+  use petgraph::graph::Graph;
+  use petgraph::Undirected;
   use std::collections::HashMap;
 
   fn calle(call : Triv, args : Vec<Location>) -> Exp { Exp::Call(call, args) }
@@ -266,13 +270,13 @@ pub mod test {
 
   fn mk_conflict(n : i64) -> FrameConflict { fvar_to_conflict(index_fvar(n)) }
 
-  fn mk_spills_form(input_spills : Vec<Ident>, input_frame_conflicts : Vec<(Ident, Vec<FrameConflict>)>) -> RegAllocInfo
+  fn mk_spills_form(input_spills : Vec<Ident>, input_frame_conflicts : Graph<FrameConflict, (), Undirected>) -> RegAllocInfo
   { RegAllocInfo
     { locals             : Vec::new()
     , unspillables       : Vec::new()
     , spills             : input_spills
     , frame_conflicts    : input_frame_conflicts
-    , register_conflicts : Vec::new()
+    , register_conflicts : Graph::new_undirected()
     }
   }
 
@@ -310,13 +314,30 @@ pub mod test {
     let fc2 = mk_conflict(2);
     let fc3 = mk_conflict(3);
 
-    let binding1_alloc = 
-      mk_spills_form( vec![z9, z10, z11, z12]
-                    , vec![ (z5, vec![var_to_frame_conflict(z6), var_to_frame_conflict(z7), fc0])
-                          , (z6, vec![var_to_frame_conflict(z5), fc1, fc2])
-                          , (z7, vec![var_to_frame_conflict(z5), var_to_frame_conflict(z6), fc3])
-                          , (z8, vec![fc3, fc2, fc0])]);
+    let mut cg_b1 : Graph<FrameConflict, (), Undirected> = Graph::new_undirected();
+    let z5n = cg_b1.add_node(var_to_frame_conflict(z5));
+    let z6n = cg_b1.add_node(var_to_frame_conflict(z6));
+    let z7n = cg_b1.add_node(var_to_frame_conflict(z7));
+    let z8n = cg_b1.add_node(var_to_frame_conflict(z8));
+    let f0n = cg_b1.add_node(fc0);
+    let f1n = cg_b1.add_node(fc1);
+    let f2n = cg_b1.add_node(fc2);
+    let f3n = cg_b1.add_node(fc3);
 
+    cg_b1.add_edge(z5n, z6n, ());
+    cg_b1.add_edge(z5n, z7n, ());
+    cg_b1.add_edge(z5n, f0n, ());
+    cg_b1.add_edge(z6n, z5n, ());
+    cg_b1.add_edge(z6n, f1n, ());
+    cg_b1.add_edge(z6n, f2n, ());
+    cg_b1.add_edge(z7n, z5n, ());
+    cg_b1.add_edge(z7n, z6n, ());
+    cg_b1.add_edge(z7n, f3n, ());
+    cg_b1.add_edge(z8n, f3n, ());
+    cg_b1.add_edge(z8n, f2n, ());
+    cg_b1.add_edge(z8n, f0n, ());
+
+    let binding1_alloc = mk_spills_form(vec![z9, z10, z11, z12], cg_b1);
 
     let binding1 = 
       LetrecEntry

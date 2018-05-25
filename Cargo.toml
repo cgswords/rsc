@@ -7,3 +7,4 @@ authors = [ "Cameron Swords <cameronswords@gmail.com>" ]
 [dependencies]
 string-interner = "0.6.3"
 lazy_static = "1.0"
+petgraph = "0.4.12"
