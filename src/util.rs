@@ -42,6 +42,11 @@ pub static RETURN_VAL_REG  : &str = "rax";
 // so we need to shift by 8
 pub const WORD_SIZE       : i64  = 3; 
 
+lazy_static! {
+  pub static ref REGISTERS : Vec<Location> = 
+    vec!["rax", "rsp", "rcx", "rbx", "rbp", "rsi", "rdi", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"]
+    .into_iter().map(|reg| Location::Reg(Ident::from_str(reg))).collect();
+}
 
 // We need a way to make new, unique labels. We do this with a static, mutable
 // counter.
@@ -83,7 +88,7 @@ pub fn mk_uvar(var: &str) -> Ident {
 // A location is a register or a frame variable. That's all they will ever be.
 // Abstracting this allows us to use the same map through multiple passes
 // without converting the locations from language to language.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Location
   { Reg(Ident)
   , FrameVar(i64) // offset value

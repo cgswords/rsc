@@ -7,6 +7,8 @@ mod util;
 mod interner;
 mod alloc_lang;
 
+use alloc_lang::everybody_home;
+
 //use util::Binop;
 //use util::Relop;
 
@@ -42,6 +44,9 @@ use finalize_instruction_selection::finalize_instruction_selection;
 
 mod assign_frame;
 use assign_frame::assign_frame;
+
+mod assign_registers;
+use assign_registers::assign_registers;
 
 fn main() {
 
@@ -182,5 +187,17 @@ fn main() {
    let output19 = assign_frame(assign_frame::test::test1());
    
    println!("{:?}",output19);
+   
+   let output20 = everybody_home(assign_frame(assign_frame::test::test1()));
+   
+   println!("Everybody home [19]: {:?}",output20);
+
+   let output21 = assign_registers(assign_registers::test::test1());
+   
+   println!("{:?}",output21);
+   
+   let output22 = everybody_home(assign_registers(assign_registers::test::test1()));
+   
+   println!("Everybody home [21]: {:?}",output22);
 
 }

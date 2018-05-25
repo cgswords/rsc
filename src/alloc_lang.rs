@@ -4,17 +4,38 @@ use util::Ident;
 use util::Relop;
 use util::Binop;
 
+use std::fmt;
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
 #[derive(Debug)]
 pub enum Program { Letrec(Vec<LetrecEntry>, Body) }
 
-#[derive(Debug)]
+// impl fmt::Debug for Program {
+//   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//     match &self {
+//       Program::Letrec(bindings, body) => {
+//         write!(f, "Program\n");
+//         for binding in bindings {
+//           write!(f, "{:?}", binding);
+//         }
+//         write!(f, "\n{:?}", body);
+//         return f;
+//       }  
+//     }
+//   }
+// }
+
 pub struct LetrecEntry
   { pub label : Label
   , pub rhs   : Body
   }
+
+impl fmt::Debug for LetrecEntry {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "\n\t[{:?}\n\t{:?}]\n", self.label, self.rhs)
+  }
+}
 
 #[derive(Debug)]
 pub struct Body 
@@ -28,7 +49,6 @@ pub enum RegAllocForm
   , Unallocated(RegAllocInfo, HashMap<Ident, Location>)
   }
 
-#[derive(Debug)]
 pub struct RegAllocInfo 
   { pub locals             : Vec<Ident>
   , pub unspillables       : Vec<Ident>
@@ -36,6 +56,13 @@ pub struct RegAllocInfo
   , pub frame_conflicts    : Vec<(Ident, Vec<FrameConflict>)>
   , pub register_conflicts : Vec<(Ident, Vec<RegConflict>)>
   }
+
+impl fmt::Debug for RegAllocInfo {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "\n\t\tAllocInfo\n\t\t  locals: {:?}\n\t\t  unspillables: {:?}]\n\t\t  spills: {:?}\n\t\t  framecs:  {:?}\n\t\t  regs: {:?}\n", 
+              self.locals, self.unspillables, self.spills, self.frame_conflicts, self.register_conflicts)
+  }
+}
 
 #[derive(Debug)]
 pub enum Exp 
@@ -79,7 +106,7 @@ pub enum Triv
   }
 
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FrameConflict
   { Var(Ident)
   , FrameVar(i64)
@@ -96,7 +123,7 @@ pub fn var_to_frame_conflict(id : Ident) -> FrameConflict {
   FrameConflict::Var(id)
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegConflict
   { Var(Ident)
   , Reg(Ident)
@@ -110,5 +137,25 @@ pub fn reg_to_conflict(l : Location) -> RegConflict {
   match l
   { Location::FrameVar(n) =>  panic!("Tried to convert frame var {:?} to a frame variable", n)
   , Location::Reg(r)      => RegConflict::Reg(r)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Checks is every block has allocation bindings (instead of unallocation
+// bindings).
+
+pub fn everybody_home(pgm : Program) -> bool {
+  fn is_home(entry : Body) -> bool {
+    match entry.alloc
+    { RegAllocForm::Allocated(_)      => true
+    , RegAllocForm::Unallocated(_, _) => false
+    }
+  }
+
+  match pgm
+  { Program::Letrec(bindings, main) => 
+    { let bindings_home = bindings.into_iter().fold(true, |acc, binding| acc && is_home(binding.rhs));
+      bindings_home && is_home(main)
+    }
   }
 }
