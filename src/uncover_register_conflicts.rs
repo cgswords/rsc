@@ -160,11 +160,41 @@ fn body(input: Body) -> Body {
             let alt_liveset = exp(alt);
             pred(test, con_liveset, alt_liveset)
           }
-        , Exp::Begin(effs, exp)   =>
+        , Exp::Begin(effs, tail)   => {
+            let liveset = exp(*tail);
+            effs(effs, liveset);
+          }
         }
       }
 
-      fn pred(input : &Pred, con_lives : Vec<Ident>, alt_lives : Vec<Ident>) -> Vec<Ident> {
+      fn pred(input : &Pred, con_lives : mut Vec<Ident>, alt_lives : mut Vec<Ident>) -> Vec<Ident> {
+        match input
+        { Pred::True                  => {
+            con_lives.append(alt_lives);
+            return con_lives;
+          }
+        , Pred::False                 => {
+            con_lives.append(alt_lives);
+            return con_lives;
+          }
+        , Pred::Op(op, triv1, triv2)  => 
+        , Pred::If(test, conseq, alt) => 
+        , Pred::Begin(effs, test)     => 
+        }
+      }
+
+      fn effects(effs : Vec<Effect>, liveset : mut Vec<Ident>) {
+        let mut cur_liveset = liveset;
+        
+        // We process the effects from the bottom up to keep track of the
+        // live set: everything live is everything used below this effect
+        while !effs.is_empty() {
+          let eff = effs.pop().unwrap(); // can't panic
+          cur_liveset = effect(eff);
+        }
+      }
+
+      fn effect(eff : Effect, liveset : mut Vec<Ident>) {
         
       }
 
