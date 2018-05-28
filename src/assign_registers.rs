@@ -143,12 +143,12 @@ fn body(input: Body) -> Body {
   match input.alloc
   { RegAllocForm::Allocated(_)                  => Body { alloc : input.alloc , expression : input.expression }
   , RegAllocForm::Unallocated(mut alloc_info, mut locs) => {
-      let mut var_registers = 
+      let mut variables = 
         alloc_info.register_conflicts.node_indices()
                                      .filter(|n| alloc_info.register_conflicts.node_weight(*n).unwrap().is_var())
                                      .collect();
 
-      let (allocs, spills) = allocate(&mut var_registers, &mut alloc_info.register_conflicts, REGISTERS.clone());
+      let (allocs, spills) = allocate(&mut variables, &mut alloc_info.register_conflicts, REGISTERS.clone());
       if spills.is_empty() {
         return Body { alloc : RegAllocForm::Allocated(allocs), expression : input.expression };
       } else {

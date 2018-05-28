@@ -1,6 +1,6 @@
 pub use interner::Ident;
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum Binop 
   { Plus
   , Minus
@@ -9,7 +9,7 @@ pub enum Binop
   , LogOr
   }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum Relop 
   { LT
   , LTEq
@@ -18,7 +18,7 @@ pub enum Relop
   , GT
   }
 
-#[derive(Debug,Clone, Copy)]
+#[derive(Debug,Clone,Copy)]
 pub struct Label {
   pub label : Ident  
 }

@@ -66,14 +66,14 @@ impl fmt::Debug for RegAllocInfo {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum Exp 
   { Call(Triv, Vec<Location>)
   , If(Pred,Box<Exp>,Box<Exp>)
   , Begin(Vec<Effect>,Box<Exp>)
   }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum Pred
   { True
   , False
@@ -82,7 +82,7 @@ pub enum Pred
   , Begin(Vec<Effect>, Box<Pred>)
   }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum Effect
   { SetOp(Triv, (Binop, Triv, Triv))
   , Set(Triv, Triv)
@@ -93,13 +93,13 @@ pub enum Effect
   , Begin(Box<Vec<Effect>>, Box<Effect>)
   }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum Variable 
   { Loc(Location)
   , UVar(Ident)
   }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum Triv 
   { Var(Variable)
   , Num(i64) 

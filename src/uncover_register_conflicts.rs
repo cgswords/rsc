@@ -152,22 +152,22 @@ fn body(input: Body) -> Body {
       // We define each of these so that we don't have to pass the map and graph
       // everywhere. It's a lousy hack, but better than the alternative.
 
-      fn exp(input : &Exp) -> Vec<Ident> {
+      fn exp(input : &Exp) -> Vec<RegConflict> {
         match input
         { Exp::Call(call, lives)  => 
         , Exp::If(test, con, alt) => {
-            let con_liveset = exp(con);
-            let alt_liveset = exp(alt);
+            let con_liveset = exp(*con);
+            let alt_liveset = exp(*alt);
             pred(test, con_liveset, alt_liveset)
           }
         , Exp::Begin(effs, tail)   => {
             let liveset = exp(*tail);
-            effs(effs, liveset);
+            effects(effs, liveset);
           }
         }
       }
 
-      fn pred(input : &Pred, con_lives : mut Vec<Ident>, alt_lives : mut Vec<Ident>) -> Vec<Ident> {
+      fn pred(input : &Pred, con_lives : mut Vec<RegConflict>, alt_lives : mut Vec<RegConflict>) -> Vec<RegConflict> {
         match input
         { Pred::True                  => {
             con_lives.append(alt_lives);
@@ -177,27 +177,69 @@ fn body(input: Body) -> Body {
             con_lives.append(alt_lives);
             return con_lives;
           }
-        , Pred::Op(op, triv1, triv2)  => 
-        , Pred::If(test, conseq, alt) => 
-        , Pred::Begin(effs, test)     => 
+        , Pred::Op(op, triv1, triv2)  => {
+            let mut triv1_lives = triv(triv1);
+            let mut triv2_lives = triv(triv2);
+
+            add_conflicts(&triv1_lives, &triv2_lives);
+
+            con_lives.append(alt_lives);
+            con_lives.append(triv1_lives);
+            con_lives.append(triv2_lives);
+          }
+        , Pred::If(test, conseq, alt) => {
+            let mut new_con_liveset = pred(*conseq, con_lives.clone(), alt_lives.clone());
+            let mut new_alt_liveset = pred(*alt, con_lives.clone(), alt_lives.clone());
+            pred(*test, new_con_liveset, new_alt_liveset);
+          }
+        , Pred::Begin(effs, test)     => {
+            let new_lives = pred(test, con_lives, alt_lives);
+            effects(effs, new_lives); // TODO Gross. Better option?
+          }
         }
       }
 
-      fn effects(effs : Vec<Effect>, liveset : mut Vec<Ident>) {
+      fn effects(input : &Vec<Effect>, liveset : mut Vec<RegConflict>) -> Vec<RegConflict> {
         let mut cur_liveset = liveset;
         
         // We process the effects from the bottom up to keep track of the
         // live set: everything live is everything used below this effect
-        while !effs.is_empty() {
-          let eff = effs.pop().unwrap(); // can't panic
-          cur_liveset = effect(eff);
+        for eff in input.into_iter().reverse() {
+          cur_liveset = effect(eff, &cur_liveset);
+        }
+
+        cur_liveset
+      }
+
+      fn effect(input : &Effect, liveset : mut Vec<RegConflict>) -> Vec<RegConflict> {
+        match input
+        { Effect::SetOp(dest, (op, src1, src1)) =>
+        , Effect::Set(dest, src)                =>
+        , Effect::Nop                           =>
+        , Effect::MSet(dest, src1, src2)        =>
+        , Effect::ReturnPoint(lbl, e, size)     =>
+        , Effect::If(text, conseq, alt)         =>
+        , Effect::Begin(effs, eff)              =>
         }
       }
 
-      fn effect(eff : Effect, liveset : mut Vec<Ident>) {
-        
-      }
+      fn triv(input : &Triv) -> Vec<RegConflict> {
+        match input
+        { Triv::Var(Variable::Uvar(id))               => vec![RegConflict::Var(id)]
+        , Triv::Var(Variable::Loc(Location::Reg(id))) => vec![RegConflict::Reg(id)]
+        , Triv::Var(_)   => vec![]
+        , Triv::Num(_)   => vec![]
+        , Triv::Label(_) => vec![]
+        , Triv::MRef(triv1, triv2) => {
+            let mut triv1_lives = triv(*triv1);
+            let mut triv2_lives = triv(*triv2);
 
+            add_conflicts(&triv1_lives, &triv2_lives);
+            
+            return triv1_lives.append(triv2_lives);
+          }
+        }
+      }
     }
   }
 }
