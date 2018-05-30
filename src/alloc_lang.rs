@@ -107,6 +107,16 @@ pub enum Triv
   , MRef(Box<Triv>, Box<Triv>)
   }
 
+impl Triv {
+  pub fn is_var(&self) -> bool {
+    match self
+    { Triv::Var(_) => true
+    , _            => False
+    }
+  }
+}
+
+
 // ---------------------------------------------------------------------------
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FrameConflict
