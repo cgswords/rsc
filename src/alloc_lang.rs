@@ -108,7 +108,7 @@ pub enum Triv
   }
 
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FrameConflict
   { Var(Ident)
   , FrameVar(i64)
@@ -125,7 +125,7 @@ pub fn var_to_frame_conflict(id : Ident) -> FrameConflict {
   FrameConflict::Var(id)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RegConflict
   { Var(Ident)
   , Reg(Ident)
@@ -140,6 +140,13 @@ impl RegConflict {
   }
 
   pub fn is_reg(&self) -> bool { !self.is_var() }
+}
+
+pub fn loc_is_reg(loc : &Location) -> bool {
+  match loc
+  { Location::Reg(_) => true
+  , Location::FrameVar(_) => false
+  }
 }
 
 pub fn var_to_reg_conflict(id : Ident) -> RegConflict {

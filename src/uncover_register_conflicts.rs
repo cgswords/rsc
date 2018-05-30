@@ -19,8 +19,6 @@
 use util::Ident;
 use util::Location;
 // use util::mk_uvar;
-use util::frame_index;
-use util::index_fvar;
 
 use alloc_lang::Program;
 use alloc_lang::LetrecEntry;
@@ -32,12 +30,17 @@ use alloc_lang::Pred;
 use alloc_lang::Effect;
 use alloc_lang::Variable;
 use alloc_lang::Triv;
-use alloc_lang::FrameConflict;
+use alloc_lang::RegConflict;
+use alloc_lang::loc_is_reg;
+use alloc_lang::reg_to_conflict;
+use alloc_lang::var_to_reg_conflict;
 
 use petgraph::graph::Graph;
+use petgraph::graph::NodeIndex;
+use petgraph::Undirected;
 
 use std::collections::HashMap;
-use std::cmp::max;
+use std::collections::HashSet;
 
 // ---------------------------------------------------------------------------
 // INPUT / OUTPUT LANGUAGE
@@ -120,7 +123,7 @@ use std::cmp::max;
 // ---------------------------------------------------------------------------
 // IMPLEMENTATION
 // ---------------------------------------------------------------------------
-pub fn assign_frame(input : Program) -> Program {
+pub fn uncover_register_conflicts(input : Program) -> Program {
   return match input 
   { Program::Letrec(letrecs, body_exp) =>  
       Program::Letrec( letrecs.into_iter().map(|x| letrec_entry(x)).collect()
@@ -140,106 +143,179 @@ fn body(input: Body) -> Body {
   { RegAllocForm::Allocated(_)                  => Body { alloc : input.alloc , expression : input.expression }
   , RegAllocForm::Unallocated(mut alloc_info, mut locs) => {
       let mut conflicts : Graph<RegConflict, (), Undirected> = Graph::new_undirected();
-      let mut node_map  : HashMap<Ident, NodeIndex>          = HashMap::new();
+      let mut node_map  : HashMap<RegConflict, NodeIndex>    = HashMap::new();
 
-      exp(&body.expression, &node_map, &conflicts);
+      exp(&input.expression, &mut conflicts, &mut node_map);
 
-      aloc_info.register_conflicts = conflicts;
-      
-      Body { alloc      : RegAllocForm::Unallocated(alloc_info, locs)
-           , expression : input.expression }
+      alloc_info.register_conflicts = conflicts;
 
-      // We define each of these so that we don't have to pass the map and graph
-      // everywhere. It's a lousy hack, but better than the alternative.
+      return Body { alloc      : RegAllocForm::Unallocated(alloc_info, locs)
+                  , expression : input.expression };
 
-      fn exp(input : &Exp) -> Vec<RegConflict> {
-        match input
-        { Exp::Call(call, lives)  => 
+      // ---------------------------------------------------------------------------
+      fn exp( input : &Exp
+            , gs : &mut Graph<RegConflict, (), Undirected>
+            , nm : &mut HashMap<RegConflict, NodeIndex>) 
+            -> HashSet<RegConflict> 
+      { match input
+        { Exp::Call(call, lives)  => {
+            let liveset : HashSet<RegConflict> = lives.into_iter()
+                                                      .filter(|&r| loc_is_reg(r))
+                                                      .map(|r| reg_to_conflict(*r))
+                                                      .collect();
+            let mut target_liveset = triv(call, gs, nm);
+            add_conflicts(&target_liveset, &liveset, gs, nm);
+
+            return target_liveset.union(&liveset)
+                                 .map(|live| live.clone())
+                                 .collect();
+          }
         , Exp::If(test, con, alt) => {
-            let con_liveset = exp(*con);
-            let alt_liveset = exp(*alt);
-            pred(test, con_liveset, alt_liveset)
+            let con_liveset = exp(&*con, gs, nm);
+            let alt_liveset = exp(&*alt, gs, nm);
+            return pred(test, con_liveset, alt_liveset, gs, nm);
           }
         , Exp::Begin(effs, tail)   => {
-            let liveset = exp(*tail);
-            effects(effs, liveset);
+            let liveset = exp(&*tail, gs, nm);
+            return effects(effs, liveset, gs, nm);
           }
         }
       }
 
-      fn pred(input : &Pred, con_lives : mut Vec<RegConflict>, alt_lives : mut Vec<RegConflict>) -> Vec<RegConflict> {
+      fn pred( input : &Pred, con_lives : HashSet<RegConflict>, alt_lives : HashSet<RegConflict>
+             , gs : &mut Graph<RegConflict, (), Undirected>, nm : &mut HashMap<RegConflict, NodeIndex>) -> HashSet<RegConflict> {
         match input
-        { Pred::True                  => {
-            con_lives.append(alt_lives);
-            return con_lives;
-          }
-        , Pred::False                 => {
-            con_lives.append(alt_lives);
-            return con_lives;
-          }
+        { Pred::True                  => con_lives.union(&alt_lives).map(|e| e.clone()).collect()
+        , Pred::False                 => con_lives.union(&alt_lives).map(|e| e.clone()).collect()
         , Pred::Op(op, triv1, triv2)  => {
-            let mut triv1_lives = triv(triv1);
-            let mut triv2_lives = triv(triv2);
+            let mut triv1_lives = triv(triv1, gs, nm);
+            let mut triv2_lives = triv(triv2, gs, nm);
 
-            add_conflicts(&triv1_lives, &triv2_lives);
+            add_conflicts(&triv1_lives, &triv2_lives, gs, nm);
 
-            con_lives.append(alt_lives);
-            con_lives.append(triv1_lives);
-            con_lives.append(triv2_lives);
+            return con_lives.union(&alt_lives).map(|e| e.clone()).collect::<HashSet<_>>()
+                            .union(&triv1_lives).map(|e| e.clone()).collect::<HashSet<_>>()
+                            .union(&triv2_lives).map(|e| e.clone()).collect();
           }
         , Pred::If(test, conseq, alt) => {
-            let mut new_con_liveset = pred(*conseq, con_lives.clone(), alt_lives.clone());
-            let mut new_alt_liveset = pred(*alt, con_lives.clone(), alt_lives.clone());
-            pred(*test, new_con_liveset, new_alt_liveset);
+            let mut new_con_liveset = pred(&*conseq, con_lives.clone(), alt_lives.clone(), gs, nm);
+            let mut new_alt_liveset = pred(&*alt, con_lives.clone(), alt_lives.clone(), gs, nm);
+            return pred(&*test, new_con_liveset, new_alt_liveset, gs, nm);
           }
         , Pred::Begin(effs, test)     => {
-            let new_lives = pred(test, con_lives, alt_lives);
-            effects(effs, new_lives); // TODO Gross. Better option?
+            let new_lives = pred(test, con_lives, alt_lives, gs, nm);
+            return effects(effs, new_lives, gs, nm); // TODO Gross. Better option?
           }
         }
       }
 
-      fn effects(input : &Vec<Effect>, liveset : mut Vec<RegConflict>) -> Vec<RegConflict> {
+      fn effects( input : &Vec<Effect>, liveset : HashSet<RegConflict>
+                , gs : &mut Graph<RegConflict, (), Undirected>, nm : &mut HashMap<RegConflict, NodeIndex>) -> HashSet<RegConflict> {
         let mut cur_liveset = liveset;
         
         // We process the effects from the bottom up to keep track of the
         // live set: everything live is everything used below this effect
-        for eff in input.into_iter().reverse() {
-          cur_liveset = effect(eff, &cur_liveset);
+        for eff in input.into_iter().rev() {
+          cur_liveset = effect(eff, cur_liveset, gs, nm);
         }
 
         cur_liveset
       }
 
-      fn effect(input : &Effect, liveset : mut Vec<RegConflict>) -> Vec<RegConflict> {
+      fn effect( input : &Effect, liveset : HashSet<RegConflict>
+               , gs : &mut Graph<RegConflict, (), Undirected>, nm : &mut HashMap<RegConflict, NodeIndex>) -> HashSet<RegConflict> {
         match input
-        { Effect::SetOp(dest, (op, src1, src1)) =>
-        , Effect::Set(dest, src)                =>
-        , Effect::Nop                           =>
-        , Effect::MSet(dest, src1, src2)        =>
-        , Effect::ReturnPoint(lbl, e, size)     =>
-        , Effect::If(text, conseq, alt)         =>
-        , Effect::Begin(effs, eff)              =>
+        { Effect::SetOp(dest, (op, src1, src2)) => {
+            let mut dest_lives = triv(dest, gs, nm);
+            add_conflicts(&dest_lives, &liveset, gs, nm);
+
+            let mut src1_lives = triv(src1, gs, nm);
+            let mut src2_lives = triv(src2, gs, nm);
+
+            return liveset.difference(&dest_lives).map(|e| e.clone()).collect::<HashSet<_>>()
+                          .union(&src1_lives).map(|e| e.clone()).collect::<HashSet<_>>()
+                          .union(&src2_lives).map(|e| e.clone()).collect();
+          }
+        , Effect::Set(dest, src)                => {
+            let mut dest_lives = triv(src, gs, nm);
+            add_conflicts(&dest_lives, &liveset, gs, nm);
+            
+            let mut src_lives = triv(src, gs, nm);
+            
+            return liveset.difference(&dest_lives).map(|e| e.clone()).collect::<HashSet<_>>()
+                          .union(&src_lives).map(|e| e.clone()).collect();
+          }
+        , Effect::Nop                           => liveset
+        , Effect::MSet(dest, src1, src2)        => {
+            let mut dest_lives = triv(dest, gs, nm);
+            add_conflicts(&dest_lives, &liveset, gs, nm); 
+
+            let mut src1_lives = triv(src1, gs, nm);
+            add_conflicts(&src1_lives, &liveset, gs, nm);
+
+            let mut src2_lives = triv(src2, gs, nm);
+            add_conflicts(&src1_lives, &liveset, gs, nm); 
+
+            return liveset.union(&dest_lives).map(|e| e.clone()).collect::<HashSet<_>>()
+                          .union(&src1_lives).map(|e| e.clone()).collect::<HashSet<_>>()
+                          .union(&src2_lives).map(|e| e.clone()).collect();
+          }
+        , Effect::ReturnPoint(lbl, e, size)     => exp(e, gs, nm)
+        , Effect::If(test, conseq, alt)         => {
+            let con_lives = effect(conseq, liveset.clone(), gs, nm);
+            let alt_lives = effect(alt, liveset.clone(), gs, nm);
+            return pred(test, con_lives, alt_lives, gs, nm);
+          }
+        , Effect::Begin(effs, eff)              => effects(effs, effect(eff, liveset, gs, nm), gs, nm)
         }
       }
 
-      fn triv(input : &Triv) -> Vec<RegConflict> {
+      fn triv( input : &Triv
+             , gs : &mut Graph<RegConflict, (), Undirected>, nm : &mut HashMap<RegConflict, NodeIndex>) -> HashSet<RegConflict> {
         match input
-        { Triv::Var(Variable::Uvar(id))               => vec![RegConflict::Var(id)]
-        , Triv::Var(Variable::Loc(Location::Reg(id))) => vec![RegConflict::Reg(id)]
-        , Triv::Var(_)   => vec![]
-        , Triv::Num(_)   => vec![]
-        , Triv::Label(_) => vec![]
+        { Triv::Var(Variable::UVar(id))               => vec![RegConflict::Var(id.clone())].into_iter().collect()
+        , Triv::Var(Variable::Loc(Location::Reg(id))) => vec![RegConflict::Reg(id.clone())].into_iter().collect()
+        , Triv::Var(_)   => HashSet::new()
+        , Triv::Num(_)   => HashSet::new()
+        , Triv::Label(_) => HashSet::new()
         , Triv::MRef(triv1, triv2) => {
-            let mut triv1_lives = triv(*triv1);
-            let mut triv2_lives = triv(*triv2);
+            let mut triv1_lives = triv(&*triv1, gs, nm);
+            let mut triv2_lives = triv(&*triv2, gs, nm);
 
-            add_conflicts(&triv1_lives, &triv2_lives);
+            add_conflicts(&triv1_lives, &triv2_lives, gs, nm);
             
-            return triv1_lives.append(triv2_lives);
+            return triv1_lives.union(&triv2_lives).map(|e| e.clone()).collect();
           }
         }
       }
+
+
+      // ---------------------------------------------------------------------------
+      fn as_node( input : &RegConflict
+                , conflicts : &mut Graph<RegConflict, (), Undirected>
+                , node_map : &mut HashMap<RegConflict, NodeIndex>) 
+                -> NodeIndex 
+      { if node_map.contains_key(input) {
+          return node_map.get(input).unwrap().clone();
+        } else {
+          let new_index = conflicts.add_node(input.clone());
+          node_map.insert(input.clone(), new_index);
+          return new_index;
+        }
+      };
+
+      fn add_conflicts( conflict1 : &HashSet<RegConflict>, conflict2 : &HashSet<RegConflict>
+                      , conflicts : &mut Graph<RegConflict, (), Undirected>, nmap : &mut HashMap<RegConflict, NodeIndex>) {
+        let new_nodes_c1 : HashSet<_> = conflict1.into_iter().map(|&n| as_node(&n, conflicts, nmap)).collect();
+        let new_nodes_c2 : HashSet<_> = conflict1.into_iter().map(|&n| as_node(&n, conflicts, nmap)).collect();
+        for node1 in new_nodes_c1 {
+          for node2 in new_nodes_c2.clone() {
+            conflicts.add_edge(node1, node2, ());
+          }
+        }
+      };
+
+
     }
   }
 }
@@ -247,16 +323,6 @@ fn body(input: Body) -> Body {
 
 
 // ---------------------------------------------------------------------------
-
-fn lookup(node_map : HashMap<Ident, NodeIndex>, graph : Graph<RegConflict, (), Undirected>, id : Ident) -> NodeIndex {
-  if node_map.contains_key(id) {
-    node_map.get(id).unwrap()
-  } else {
-    new_node = graph.add_node(var_to_reg_conflict(id));
-    node_map.insert(id, new_node.clone());
-    new_node
-  } 
-}
 
 // ---------------------------------------------------------------------------
 // TESTING
@@ -286,10 +352,8 @@ pub mod test {
   use alloc_lang::Effect;
   use alloc_lang::Variable;
   use alloc_lang::Triv;
-  use alloc_lang::FrameConflict;
-  use alloc_lang::fvar_to_conflict;
-  use alloc_lang::var_to_frame_conflict;
 
+  use petgraph::graph::Graph;
   use std::collections::HashMap;
 
   fn calle(call : Triv, args : Vec<Location>) -> Exp { Exp::Call(call, args) }
@@ -336,15 +400,13 @@ pub mod test {
 
   fn mk_lbl(s : &str) -> Label { Label { label : Ident::from_str(s) } }
 
-  fn mk_conflict(n : i64) -> FrameConflict { fvar_to_conflict(index_fvar(n)) }
-
-  fn mk_spills_form(input_spills : Vec<Ident>, input_frame_conflicts : Vec<(Ident, Vec<FrameConflict>)>) -> RegAllocInfo
+  fn mk_alloc_form() -> RegAllocInfo
   { RegAllocInfo
     { locals             : Vec::new()
     , unspillables       : Vec::new()
-    , spills             : input_spills
-    , frame_conflicts    : input_frame_conflicts
-    , register_conflicts : Vec::new()
+    , spills             : Vec::new()
+    , frame_conflicts    : Graph::new_undirected()
+    , register_conflicts : Graph::new_undirected()
     }
   }
 
@@ -377,18 +439,7 @@ pub mod test {
     body_map.insert(x2, regl("r8"));
     body_map.insert(x3, regl("r9"));
 
-    let fc0 = mk_conflict(0);
-    let fc1 = mk_conflict(1);
-    let fc2 = mk_conflict(2);
-    let fc3 = mk_conflict(3);
-
-    let binding1_alloc = 
-      mk_spills_form( vec![z9, z10, z11, z12]
-                    , vec![ (z5, vec![var_to_frame_conflict(z6), var_to_frame_conflict(z7), fc0])
-                          , (z6, vec![var_to_frame_conflict(z5), fc1, fc2])
-                          , (z7, vec![var_to_frame_conflict(z5), var_to_frame_conflict(z6), fc3])
-                          , (z8, vec![fc3, fc2, fc0])]);
-
+    let binding1_alloc = mk_alloc_form();
 
     let binding1 = 
       LetrecEntry

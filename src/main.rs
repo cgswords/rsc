@@ -50,6 +50,9 @@ use assign_frame::assign_frame;
 mod assign_registers;
 use assign_registers::assign_registers;
 
+mod uncover_register_conflicts;
+use uncover_register_conflicts::uncover_register_conflicts;
+
 fn main() {
 
    // TODO: write a pass to optimize jumps
@@ -202,4 +205,8 @@ fn main() {
    
    println!("Everybody home [21]: {:?}",output22);
 
+   let output23 = uncover_register_conflicts(uncover_register_conflicts::test::test1());
+   
+   println!("{:?}",output23);
+   
 }
