@@ -1,16 +1,16 @@
-// PASS    | select_instructions
+// PASS    | assign_frame_args
 // ---------------------------------------------------------------------------
-// USAGE   | select_instructions : alloc_lang::Program -> 
-//         |                       alloc_lang::Program
+// USAGE   | assign_frame_args : alloc_lang::Program -> 
+//         |                     alloc_lang::Program
 // ---------------------------------------------------------------------------
-// RETURNS | The expression, now adhering to x86_64 instruction conventions
+// RETURNS | The expression with all of the call_lives placed appropriately.
 // ---------------------------------------------------------------------------
 // DESCRIPTION
 // ---------------------------------------------------------------------------
-// This pass walks through expression, rebuilding expressions to adhere to the
-// invocation and usage conventions of x86_64.
-//
-// TODO: we technically don't deal with memory ref trivs correctly.
+// This pass walks through expression, ensuring each variable in the call_live form
+// is correctly located and then discarding the call_live entry.
+// 
+// We also introduce frame-pointer operations for the return-point form.
 //// ---------------------------------------------------------------------------
 
 use util::Binop;
@@ -18,7 +18,10 @@ use util::Relop;
 // use util::Label;
 use util::Ident;
 use util::Location;
-use util::mk_uvar;
+use util::frame_index;
+use util::index_fvar;
+use util::FRAME_PTR_REG;
+use util::WORD_SIZE;
 
 use alloc_lang::Program;
 use alloc_lang::LetrecEntry;
@@ -41,6 +44,7 @@ use petgraph::Undirected;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::cmp::max;
 
 // ---------------------------------------------------------------------------
 // INPUT / OUTPUT LANGUAGE
@@ -62,7 +66,7 @@ use std::collections::HashSet;
 //   }
 // 
 // pub enum RegAllocForm
-// 	{ Allocated(HashMap<Ident, Location>)
+//  { Allocated(HashMap<Ident, Location>)
 //  , Unallocated(mut RegAllocInfo, mut HashMap<Ident, Location>)
 //  }
 // 
@@ -73,7 +77,7 @@ use std::collections::HashSet;
 //   , pub call_lives         : Vec<Variable>
 //   , pub frame_conflicts    : Vec<(Ident, Vec<FrameConflict>)>
 //   , pub register_conflicts : Vec<(Ident, Vec<RegConflict>)>
-//   , pub new_frames         : Vec<Vec<Ident>>
+//   , pub new_frames         : Vec<Vec<Ident>>;
 //   }
 //
 // pub enum Exp 
@@ -122,7 +126,6 @@ use std::collections::HashSet;
 //   , Reg(Ident)
 //   }
 
-
 macro_rules! mk_box {
   ($e:expr) => [Box::new($e)]
 }
@@ -131,7 +134,7 @@ macro_rules! mk_box {
 // ---------------------------------------------------------------------------
 // IMPLEMENTATION
 // ---------------------------------------------------------------------------
-pub fn select_instructions(input : Program) -> Program {
+pub fn assign_frame_args(input : Program) -> Program {
   return match input 
   { Program::Letrec(letrecs, body_exp) =>  
       Program::Letrec( letrecs.into_iter().map(|x| letrec_entry(x)).collect()
@@ -147,137 +150,83 @@ fn letrec_entry(input : LetrecEntry) -> LetrecEntry {
 }
 
 fn body(input: Body) -> Body {
-  Body { alloc      : input.alloc
-       , expression : exp(input.expression)
-       }
-}
+  match input.alloc
+  { RegAllocForm::Allocated(vmap)      => Body { alloc : RegAllocForm::Allocated(vmap), expression : input.expression }
+  , RegAllocForm::Unallocated(info, mut vmap) => {
 
-fn exp(input : Exp) -> Exp { 
-  match input
-  { Exp::Call(_, _)         => input 
-  , Exp::If(test, con, alt) => Exp::If(pred(test), mk_box!(exp(*con)), mk_box!(exp(*alt)))
-  , Exp::Begin(effs, tail)  => Exp::Begin(effs.into_iter().map(|e| effect(e)).collect(), mk_box!(exp(*tail)))
+      let mut frame_size = { (&info.call_lives).into_iter().fold(0, |acc, x| max(acc, var_findex(x.clone(), &vmap))) + 1 };
+
+      let mut new_fvars = HashSet::new();
+
+      let mut new_locations = for frame in &info.new_frames {
+        let mut new_index = frame_size;
+        for var in frame {
+          new_fvars.insert(var.clone());
+          vmap.insert(var.clone(), index_fvar(new_index));
+          new_index += 1;
+        }
+      };
+
+      let mut new_info = info;
+
+      new_info.locals = new_info.locals.into_iter().collect::<HashSet<_>>().difference(&new_fvars).map(|e| e.clone()).collect();
+      new_info.call_lives = Vec::new();
+      new_info.new_frames = Vec::new();
+
+      Body { alloc : RegAllocForm::Unallocated(new_info, vmap), expression : exp(input.expression, frame_size) }
+
+    }
   }
 }
 
-fn pred(input : Pred) -> Pred {
+fn exp(input : Exp, frame_size : i64) -> Exp { 
+  match input
+  { Exp::Call(target, lives) => Exp::Call(target, lives) 
+  , Exp::If(test, con, alt)  => Exp::If(pred(test, frame_size), mk_box!(exp(*con, frame_size)), mk_box!(exp(*alt, frame_size)))
+  , Exp::Begin(effs, tail)   => Exp::Begin(effs.into_iter().map(|e| effect(e, frame_size)).collect(), mk_box!(exp(*tail, frame_size)))
+  }
+}
+
+fn pred(input : Pred, frame_size : i64) -> Pred {
   match input
   { Pred::True                  => Pred::True
   , Pred::False                 => Pred::False
-  , Pred::Op(op, triv1, triv2)  => relop_fst_arg(op, triv1, triv2) 
-  , Pred::If(test, conseq, alt) => Pred::If(mk_box!(pred(*test)), mk_box!(pred(*conseq)), mk_box!(pred(*alt)))
-  , Pred::Begin(effs, test)     => Pred::Begin(effs.into_iter().map(|e| effect(e)).collect(), mk_box!(pred(*test)))
+  , Pred::Op(op, triv1, triv2)  => Pred::Op(op, triv1, triv2)
+  , Pred::If(test, conseq, alt) => Pred::If( mk_box!(pred(*test, frame_size))
+                                           , mk_box!(pred(*conseq, frame_size))
+                                           , mk_box!(pred(*alt, frame_size)))
+  , Pred::Begin(effs, test)     => Pred::Begin(effs.into_iter().map(|e| effect(e, frame_size)).collect(), mk_box!(pred(*test, frame_size)))
   }
 }
 
-fn relop_fst_arg(op : Relop, arg1 : Triv, arg2 : Triv) -> Pred {
-  if arg1.is_var() {
-    relop_snd_arg(op, arg1, arg2)
-  } else if arg2.is_var() {
-    relop_snd_arg(op.flip(), arg2, arg1)
-  } else {
-    let new_var = Triv::Var(Variable::UVar(mk_uvar("px"))); 
-    return Pred::Begin(vec![Effect::Set(new_var.clone(), arg1)], mk_box!(relop_snd_arg(op, new_var, arg2)));
-  }
-}
-
-fn relop_snd_arg(op: Relop, arg1 : Triv, arg2 : Triv) -> Pred {
-  if ((arg1.is_uvar() || arg1.is_reg()) && ((arg2.is_int() && !arg2.is_int32()) || arg2.is_label())) ||
-     (arg1.is_fvar() && ((arg2.is_int() && !arg2.is_int32()) || arg2.is_label() || arg2.is_fvar()))  {
-
-    let new_var = Triv::Var(Variable::UVar(mk_uvar("py"))); 
-    return Pred::Begin(vec![Effect::Set(new_var.clone(), arg2)], mk_box!(relop_snd_arg(op, arg1, new_var)));
-
-  } else {
-    Pred::Op(op, arg1, arg2)
-  }
-}
-
-fn effect(input : Effect) -> Effect {
+fn effect(input : Effect, frame_size : i64) -> Effect {
   match input
-  { Effect::SetOp(dest, (op, arg1, arg2)) => binop_fst_arg(dest, op, arg1, arg2)
-  , Effect::Set(dest, src)                => {
-      if dest.is_fvar() && (src.is_fvar() || src.is_label() || (src.is_int() && !src.is_int32())) {
-        let new_var = Triv::Var(Variable::UVar(mk_uvar("ex"))); 
-        Effect::Begin(mk_box!(vec![Effect::Set(new_var.clone(), src), Effect::Set(dest, new_var)]))
-      } else {
-        Effect::Set(dest, src)
-      }
-    }
+  { Effect::SetOp(dest, (op, arg1, arg2)) => Effect::SetOp(dest, (op, arg1, arg2))
+  , Effect::Set(dest, src)                => Effect::Set(dest, src) 
   , Effect::Nop                           => Effect::Nop
-  , Effect::MSet(dest, offset, src)       => {
-      // complex: we might need to build a set for each of the three arguments,
-      // so we just collect them all up into a vector as we go.
-      let mut new_sets = Vec::new();
-      let new_dest = if dest.is_uvar() || dest.is_reg() {
-                       dest
-                     } else {
-                       let new_var = Triv::Var(Variable::UVar(mk_uvar("ed"))); 
-                       new_sets.push(Effect::Set(new_var.clone(), dest));
-                       new_var
-                     };
-
-      let new_off  = if offset.is_uvar() || offset.is_reg() || offset.is_int32() {
-                       offset
-                     } else {
-                       let new_var = Triv::Var(Variable::UVar(mk_uvar("eo"))); 
-                       new_sets.push(Effect::Set(new_var.clone(), offset));
-                       new_var
-                     };
-    
-      let new_src  = if src.is_uvar() || src.is_reg() || src.is_int32() {
-                       src
-                     } else {
-                       let new_var = Triv::Var(Variable::UVar(mk_uvar("es"))); 
-                       new_sets.push(Effect::Set(new_var.clone(), src));
-                       new_var
-                     };
-    
-      if new_sets.len() > 0 {
-        Effect::MSet(new_dest, new_off, new_src)
-      } else {
-        new_sets.push(Effect::MSet(new_dest, new_off, new_src));
-        Effect::Begin(mk_box!(new_sets))
-      } 
-    }
-  , Effect::ReturnPoint(lbl, body, size)  => Effect::ReturnPoint(lbl, exp(body), size)
-  , Effect::If(test, conseq, alt)         => Effect::If(pred(test), mk_box!(effect(*conseq)), mk_box!(effect(*alt)))
-  , Effect::Begin(effs)                   => Effect::Begin(mk_box!((*effs).into_iter().map(|e| effect(e)).collect()))
+  , Effect::MSet(dest, offset, src)       => Effect::MSet(dest, offset, src)
+  , Effect::ReturnPoint(lbl, body, size)  => 
+      Effect::Begin(mk_box!(vec![ Effect::SetOp(fv_as_triv(), (Binop::Plus, fv_as_triv(), Triv::Num(frame_size << WORD_SIZE)))
+                                , Effect::ReturnPoint(lbl, exp(body, frame_size), frame_size)
+                                , Effect::SetOp(fv_as_triv(), (Binop::Minus, fv_as_triv(), Triv::Num(frame_size << WORD_SIZE)))]))
+  , Effect::If(test, conseq, alt)         => Effect::If( pred(test, frame_size)
+                                                       , mk_box!(effect(*conseq, frame_size))
+                                                       , mk_box!(effect(*alt, frame_size)))
+  , Effect::Begin(effs)                   => Effect::Begin(mk_box!((*effs).into_iter().map(|e| effect(e, frame_size)).collect()))
   }
 } 
 
-fn binop_fst_arg(dest : Triv, op : Binop, arg1 : Triv, arg2 : Triv) -> Effect {
- if dest == arg1 {
-   binop_snd_arg(dest, op, arg1, arg2)
- } else if dest == arg2 && op.commutes() {
-    binop_snd_arg(dest, op, arg2, arg1)
- } else {
-   let new_var = Triv::Var(Variable::UVar(mk_uvar("arg")));
-   Effect::Begin(mk_box!(vec![ Effect::Set(new_var.clone(), arg1)
-                             , binop_snd_arg(new_var.clone(), op, new_var.clone(), arg2)
-                             , Effect::Set(dest, new_var)]))
- }
+// ---------------------------------------------------------------------------
+fn fv_as_triv() -> Triv {
+  Triv::Var(Variable::Loc(Location::Reg(Ident::from_str(FRAME_PTR_REG))))
 }
 
-// dest == arg1 at this point
-fn binop_snd_arg(dest : Triv, op : Binop, arg1 : Triv, arg2 : Triv) -> Effect {
-  if (dest.is_uvar() || dest.is_reg()) && (arg2.is_label() || (arg2.is_int() && !arg2.is_int32())) {
-      let new_var = Triv::Var(Variable::UVar(mk_uvar("arg"))); 
-      return Effect::Begin(mk_box!(vec![Effect::Set(new_var.clone(), arg2), Effect::SetOp(dest, (op, arg1, new_var))]));
-  } else if op.is_mult() && dest.is_fvar() {
-      let new_var = Triv::Var(Variable::UVar(mk_uvar("arg")));
-      Effect::Begin(mk_box!(vec![ Effect::Set(new_var.clone(), arg1)
-                                , binop_snd_arg(new_var.clone(), op, new_var.clone(), arg2)
-                                , Effect::Set(dest, new_var)]))
-  } else if dest.is_fvar() && (arg2.is_label() || (arg2.is_int() && !arg2.is_int32()) || arg2.is_fvar()) {
-      let new_var = Triv::Var(Variable::UVar(mk_uvar("arg"))); 
-      return Effect::Begin(mk_box!(vec![Effect::Set(new_var.clone(), arg2), Effect::SetOp(dest, (op, arg1, new_var))]));
-  } else { 
-      Effect::SetOp(dest, (op, arg1, arg2)) 
+fn var_findex(v : Variable, vmap : &HashMap<Ident, Location>) -> i64 {
+  match v
+  { Variable::Loc(l)  => frame_index(l)
+  , Variable::UVar(v) => if let Some(loc) = vmap.get(&v) { return frame_index(loc.clone()); } else { return -1; }
   }
 }
-
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // TESTING
@@ -382,10 +331,10 @@ pub mod test {
     { locals             : Vec::new()
     , unspillables       : Vec::new()
     , spills             : Vec::new()
-    , call_lives         : Vec::new()
     , frame_conflicts    : Graph::new_undirected()
     , register_conflicts : Graph::new_undirected()
-    , new_frames         : Vec::new()
+    , call_lives         : Vec::new()
+    , new_frames         : vec![vec![Ident::from_str("nfv10"), Ident::from_str("nfv11")]]
     }
   }
 
@@ -429,7 +378,7 @@ pub mod test {
                                 , begine(vec![ setopf(fvar(1), Binop::Plus, fvar(1), fvar(2)) 
                                              , msetf(vt(x0), nt(1), nt(40))
                                              , msetf(vt(x0), vt(y4), nt(25))
-                                             , retf(mk_lbl("foo"), 4,
+                                             , retf(mk_lbl("foo"), 0,
                                                     begine( vec![ setf(reg("rax"), fvar(1)) ]
                                                           , calle(lt(mk_lbl("X3")), vec![])) ) 
                                              , setf(vt(x0), mreft(reg("rax"), nt(1)))

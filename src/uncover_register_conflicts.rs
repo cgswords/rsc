@@ -70,8 +70,10 @@ use std::collections::HashSet;
 //   { pub locals             : Vec<Ident>
 //   , pub unspillables       : Vec<Ident>
 //   , pub spills             : Vec<Ident>
+//   , pub call_lives         : Vec<Variable>
 //   , pub frame_conflicts    : Vec<(Ident, Vec<FrameConflict>)>
 //   , pub register_conflicts : Vec<(Ident, Vec<RegConflict>)>
+//   , pub new_frames         : Vec<Vec<Ident>>
 //   }
 //
 // pub enum Exp 
@@ -422,8 +424,10 @@ pub mod test {
     { locals             : Vec::new()
     , unspillables       : Vec::new()
     , spills             : Vec::new()
+    , call_lives         : Vec::new()
     , frame_conflicts    : Graph::new_undirected()
     , register_conflicts : Graph::new_undirected()
+    , new_frames         : Vec::new()
     }
   }
 

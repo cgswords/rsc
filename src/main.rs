@@ -59,6 +59,9 @@ use select_instructions::select_instructions;
 mod finalize_alloc_locations;
 use finalize_alloc_locations::finalize_alloc_locations;
 
+mod assign_frame_args;
+use assign_frame_args::assign_frame_args;
+
 fn main() {
 
    // TODO: write a pass to optimize jumps
@@ -250,6 +253,6 @@ fn main() {
    let output27 : String = lower_compiler(reg_alloc(select_instructions::test::test1()));
    println!("{}",output27);
 
-   let output27 : String = lower_compiler(reg_alloc(uncover_register_conflicts::test::test1()));
-   println!("{}",output27);
+   let output28 = assign_frame_args(assign_frame_args::test::test1());
+   println!("{:?}",output28);
 }

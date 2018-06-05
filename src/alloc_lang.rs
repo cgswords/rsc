@@ -53,10 +53,12 @@ pub enum RegAllocForm
 
 pub struct RegAllocInfo 
   { pub locals             : Vec<Ident>
+  , pub register_conflicts : Graph<RegConflict, (), Undirected>
   , pub unspillables       : Vec<Ident>
   , pub spills             : Vec<Ident>
+  , pub call_lives         : Vec<Variable>
+  , pub new_frames         : Vec<Vec<Ident>>
   , pub frame_conflicts    : Graph<FrameConflict, (), Undirected>
-  , pub register_conflicts : Graph<RegConflict, (), Undirected>
   }
 
 impl fmt::Debug for RegAllocInfo {
@@ -101,7 +103,7 @@ impl fmt::Debug for Effect {
     , Effect::Set(t1, t2)                 => write!(f, "set {:?} {:?}", t1, t2)
     , Effect::Nop                         => write!(f, "nop")
     , Effect::MSet(t1, t2, t3)            => write!(f, "mset {:?} {:?} {:?}", t1, t2, t3)
-    , Effect::ReturnPoint(lbl, size, exp) => write!(f, "ret_pnt {:?} {:?} {:?}", lbl.label, size, exp)
+    , Effect::ReturnPoint(lbl, exp, size) => write!(f, "ret_pnt {:?} {:?} {:?}", lbl.label, size, exp)
     , Effect::If(test, con, alt)          => write!(f, "if {:?} {:?} {:?}", test, con, alt)
     , Effect::Begin(es)                   => write!(f, "(begin {:?})", es)
     }
