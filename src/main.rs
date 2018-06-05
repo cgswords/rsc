@@ -44,8 +44,8 @@ use discard_allocation_info::discard_allocation_info;
 mod finalize_instruction_selection;
 use finalize_instruction_selection::finalize_instruction_selection;
 
-mod assign_frame;
-use assign_frame::assign_frame;
+mod assign_frame_variables;
+use assign_frame_variables::assign_frame_variables;
 
 mod assign_registers;
 use assign_registers::assign_registers;
@@ -195,11 +195,11 @@ fn main() {
    
    println!("{}",output18);
 
-   let output19 = assign_frame(assign_frame::test::test1());
+   let output19 = assign_frame_variables(assign_frame_variables::test::test1());
    
    println!("{:?}",output19);
    
-   let output20 = everybody_home(&assign_frame(assign_frame::test::test1()));
+   let output20 = everybody_home(&assign_frame_variables(assign_frame_variables::test::test1()));
    
    println!("Everybody home [19]: {:?}",output20);
 
@@ -228,7 +228,7 @@ fn main() {
      if everybody_home(&exp) {
        return exp;
      }
-     reg_alloc(assign_frame(exp))
+     reg_alloc(assign_frame_variables(exp))
    }
 
    fn lower_compiler(input : alloc_lang::Program) -> String {

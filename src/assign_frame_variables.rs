@@ -1,7 +1,7 @@
-// PASS    | assign_frame
+// PASS    | assign_frame_variables
 // ---------------------------------------------------------------------------
-// USAGE   | assign_frame : alloc_lang::Program -> 
-//         |                alloc_lang::Program
+// USAGE   | assign_frame_variables : alloc_lang::Program -> 
+//         |                          alloc_lang::Program
 // ---------------------------------------------------------------------------
 // RETURNS | The expression with the spillled variable list discarded, with
 //         | spills now being placed onto the frame.
@@ -122,7 +122,7 @@ use petgraph::Undirected;
 // ---------------------------------------------------------------------------
 // IMPLEMENTATION
 // ---------------------------------------------------------------------------
-pub fn assign_frame(input : Program) -> Program {
+pub fn assign_frame_variables(input : Program) -> Program {
   return match input 
   { Program::Letrec(letrecs, body_exp) =>  
       Program::Letrec( letrecs.into_iter().map(|x| letrec_entry(x)).collect()
