@@ -53,6 +53,12 @@ use assign_registers::assign_registers;
 mod uncover_register_conflicts;
 use uncover_register_conflicts::uncover_register_conflicts;
 
+mod select_instructions;
+use select_instructions::select_instructions;
+
+mod finalize_alloc_locations;
+use finalize_alloc_locations::finalize_alloc_locations;
+
 fn main() {
 
    // TODO: write a pass to optimize jumps
@@ -193,7 +199,7 @@ fn main() {
    
    println!("{:?}",output19);
    
-   let output20 = everybody_home(assign_frame(assign_frame::test::test1()));
+   let output20 = everybody_home(&assign_frame(assign_frame::test::test1()));
    
    println!("Everybody home [19]: {:?}",output20);
 
@@ -201,7 +207,7 @@ fn main() {
    
    println!("{:?}",output21);
    
-   let output22 = everybody_home(assign_registers(assign_registers::test::test1()));
+   let output22 = everybody_home(&assign_registers(assign_registers::test::test1()));
    
    println!("Everybody home [21]: {:?}",output22);
 
@@ -209,4 +215,41 @@ fn main() {
    
    println!("{:?}",output23);
    
+   let output24 = select_instructions(select_instructions::test::test1());
+   
+   println!("{:?}",output24);
+   
+   let output25 = finalize_alloc_locations(finalize_alloc_locations::test::test1());
+   
+   println!("{:?}",output25);
+
+   fn reg_alloc(input : alloc_lang::Program) -> alloc_lang::Program {
+     let exp = assign_registers(uncover_register_conflicts(select_instructions(finalize_alloc_locations(input))));
+     if everybody_home(&exp) {
+       return exp;
+     }
+     reg_alloc(assign_frame(exp))
+   }
+
+   fn lower_compiler(input : alloc_lang::Program) -> String {
+     generate_x86_64(
+     flatten_program(
+     expose_basic_blocks(
+     expose_memory_operands(
+     expose_frame_pointer(
+     expose_frame_variables(
+     finalize_locations(
+     discard_call_lives(
+     discard_allocation_info(
+     finalize_instruction_selection(input))))))))))
+   }
+
+   let output26 : String = lower_compiler(reg_alloc(finalize_alloc_locations::test::test1()));
+   println!("{}",output26);
+
+   let output27 : String = lower_compiler(reg_alloc(select_instructions::test::test1()));
+   println!("{}",output27);
+
+   let output27 : String = lower_compiler(reg_alloc(uncover_register_conflicts::test::test1()));
+   println!("{}",output27);
 }

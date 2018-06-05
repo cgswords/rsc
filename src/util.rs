@@ -1,6 +1,8 @@
 pub use interner::Ident;
+use std::fmt;
 
-#[derive(Debug,Clone)]
+#[allow(dead_code)]
+#[derive(Clone)]
 pub enum Binop 
   { Plus
   , Minus
@@ -9,16 +11,68 @@ pub enum Binop
   , LogOr
   }
 
+impl fmt::Debug for Binop {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match &self
+    { Binop::Plus   => write!(f, "+") 
+    , Binop::Minus  => write!(f, "-") 
+    , Binop::Mult   => write!(f, "*") 
+    , Binop::LogAnd => write!(f, "l_and") 
+    , Binop::LogOr  => write!(f, "l_or")
+    }
+  }
+}
+
+impl Binop {
+  pub fn commutes(&self) -> bool {
+    match self
+    { Binop::Plus => true
+    , Binop::Mult => true
+    , _           => false
+    }
+  }
+
+  pub fn is_mult(&self) -> bool {
+    match self
+    { Binop::Mult => true
+    , _           => false
+    }
+  }
+}
+
+#[allow(dead_code)]
 #[derive(Debug,Clone)]
 pub enum Relop 
   { LT
   , LTEq
   , Equal
-  , GtEq
+  , GTEq
   , GT
   }
 
-#[derive(Debug,Clone,Copy)]
+impl Relop {
+  pub fn invert(&self) -> Relop {
+    match self 
+    { Relop::LT    => Relop::GTEq
+    , Relop::LTEq  => Relop::GT
+    , Relop::Equal => Relop::Equal
+    , Relop::GTEq  => Relop::LT
+    , Relop::GT    => Relop::LTEq
+    }
+  }
+
+  pub fn flip(&self) -> Relop {
+    match self 
+    { Relop::LT    => Relop::GT
+    , Relop::LTEq  => Relop::GTEq
+    , Relop::Equal => Relop::Equal
+    , Relop::GTEq  => Relop::LTEq
+    , Relop::GT    => Relop::LT
+    }
+  }
+}
+
+#[derive(Debug,Clone,Copy,PartialEq,Eq)]
 pub struct Label {
   pub label : Ident  
 }
@@ -73,8 +127,8 @@ static mut UVAR_COUNTER : i64 = 0;
 
 fn next_uvar_cnt () -> String {
   unsafe {
-    let output : String = LABEL_COUNTER.to_string();
-    LABEL_COUNTER += 1;
+    let output : String = UVAR_COUNTER.to_string();
+    UVAR_COUNTER += 1;
     return output;
   }
 }
@@ -88,11 +142,21 @@ pub fn mk_uvar(var: &str) -> Ident {
 // A location is a register or a frame variable. That's all they will ever be.
 // Abstracting this allows us to use the same map through multiple passes
 // without converting the locations from language to language.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Location
   { Reg(Ident)
   , FrameVar(i64) // offset value
   }
+
+
+impl fmt::Debug for Location {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match &self
+    { Location::Reg(r)       => write!(f, "%{:?}", r)
+    , Location::FrameVar(n)  => write!(f, "fv#{:?}", n)
+    }
+  }
+}
 
 // Returns the frame index of frame variable locations
 // (and -1 for registers).

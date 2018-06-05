@@ -216,22 +216,17 @@ fn effect(input: Effect, map: &HashMap<Ident, Location>) -> EFVEffect {
   }
 }
 
-fn loc(input : Location) -> Location {
-  return input;
-}
-
 fn uvar(uvar: Ident, map: &HashMap<Ident, Location>) -> Location {
   if let Some(location) = map.get(&uvar) {
-    let thisLoc : Location = location.clone();
-    loc(thisLoc)
+    return location.clone();
   } else {
     panic!("Failed to find location for uvar: {:?}", uvar);
   } 
 }
 
 fn var(input : Variable, map: &HashMap<Ident, Location>) -> Location {
-  return match input
-  { Variable::Loc(l)   => loc(l)
+  match input
+  { Variable::Loc(l)   => l
   , Variable::UVar(uv) => uvar(uv, map) 
   }
 }

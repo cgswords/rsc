@@ -227,48 +227,70 @@ pub mod test {
   use petgraph::Undirected;
   use std::collections::HashMap;
 
+  #[allow(dead_code)]
   fn calle(call : Triv, args : Vec<Location>) -> Exp { Exp::Call(call, args) }
 
+  #[allow(dead_code)]
   fn ife(test : Pred, conseq : Exp, alt : Exp) -> Exp { Exp::If(test, mk_box!(conseq), mk_box!(alt)) }
 
+  #[allow(dead_code)]
   fn begine(args : Vec<Effect>, base : Exp) -> Exp { Exp::Begin(args, mk_box!(base)) }
 
+  #[allow(dead_code)]
   fn rop(op : Relop, t1 : Triv, t2 : Triv) -> Pred { Pred::Op(op, t1, t2) }
 
+  #[allow(dead_code)]
   fn ifp(test : Pred, conseq : Pred, alt : Pred) -> Pred { Pred::If(mk_box!(test), mk_box!(conseq), mk_box!(alt)) }
 
+  #[allow(dead_code)]
   fn beginp(args : Vec<Effect>, base : Pred) -> Pred { Pred::Begin(args, mk_box!(base)) }
 
+  #[allow(dead_code)]
   fn setopf(t1 : Triv, op : Binop, arg1 : Triv, arg2 : Triv) -> Effect { Effect::SetOp(t1, (op, arg1, arg2)) }
 
+  #[allow(dead_code)]
   fn setf(dest : Triv, src : Triv) -> Effect { Effect::Set(dest, src) }
   
+  #[allow(dead_code)]
   fn nopf() -> Effect { Effect::Nop }
   
+  #[allow(dead_code)]
   fn msetf(dest : Triv, src : Triv, offset : Triv) -> Effect { Effect::MSet(dest, src, offset) }
   
+  #[allow(dead_code)]
   fn retf(lbl : Label,  frame_size : i64, body : Exp) -> Effect { Effect::ReturnPoint(lbl, body, frame_size) }
   
+  #[allow(dead_code)]
   fn iff(test : Pred, conseq : Effect, alt : Effect) -> Effect { Effect::If(test, mk_box!(conseq), mk_box!(alt)) }
  
-  fn beginf(args : Vec<Effect>, base : Effect) -> Effect { Effect::Begin(mk_box!(args), mk_box!(base)) }
+  #[allow(dead_code)]
+  fn beginf(args : Vec<Effect>) -> Effect { Effect::Begin(mk_box!(args)) }
   
+  #[allow(dead_code)]
   fn uv(name : Ident) -> Variable { Variable::UVar(name) }
 
+  #[allow(dead_code)]
   fn vt(name : Ident) -> Triv { Triv::Var(Variable::UVar(name)) }
   
+  #[allow(dead_code)]
   fn nt(val : i64) -> Triv { Triv::Num(val) }
   
+  #[allow(dead_code)]
   fn lt(lbl : Label) -> Triv { Triv::Label(lbl) }
   
+  #[allow(dead_code)]
   fn mreft(src : Triv, offset : Triv) -> Triv { Triv::MRef(mk_box!(src), mk_box!(offset)) }
 
+  #[allow(dead_code)]
   fn fvar(n: i64) -> Triv { Triv::Var(Variable::Loc(index_fvar(n))) }
 
+  #[allow(dead_code)]
   fn reg(s: &str) -> Triv { Triv::Var(Variable::Loc(Location::Reg(Ident::from_str(s)))) }
   
+  #[allow(dead_code)]
   fn regl(s: &str) -> Location { Location::Reg(Ident::from_str(s)) }
 
+  #[allow(dead_code)]
   fn mk_lbl(s : &str) -> Label { Label { label : Ident::from_str(s) } }
 
   fn mk_conflict(n : i64) -> FrameConflict { fvar_to_conflict(index_fvar(n)) }

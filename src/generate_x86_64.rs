@@ -24,6 +24,7 @@ pub enum X86Exp
   , ExpNum(i64)
   }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum X86LangStmt 
   { Lbl(Ident)
@@ -58,7 +59,7 @@ fn lookup_relop(op : Relop, negated : bool) -> String {
     { Relop::LT    => String::from("jge")
     , Relop::LTEq  => String::from("jg")
     , Relop::Equal => String::from("jne")
-    , Relop::GtEq  => String::from("jl")
+    , Relop::GTEq  => String::from("jl")
     , Relop::GT    => String::from("jle")
     };
   } else {
@@ -66,7 +67,7 @@ fn lookup_relop(op : Relop, negated : bool) -> String {
     { Relop::LT    => String::from("jl")
     , Relop::LTEq  => String::from("jle")
     , Relop::Equal => String::from("je")
-    , Relop::GtEq  => String::from("jge")
+    , Relop::GTEq  => String::from("jge")
     , Relop::GT    => String::from("jg")
     };
   }
@@ -204,8 +205,8 @@ pub fn test1() -> Program {
   let rax = Ident::from_str("rax");
   let r8 = Ident::from_str("r8");
   let r9 = Ident::from_str("r9");
-  let X2 = Ident::from_str("X2");
-  let X3 = Ident::from_str("X3");
+  let lbl_x2 = Ident::from_str("X2");
+  let lbl_x3 = Ident::from_str("X3");
 
   return Program::Program(
      vec![ X86LangStmt::SetLoad(mk_reg("r9"), mk_num_lit(0))    
@@ -213,10 +214,10 @@ pub fn test1() -> Program {
          , X86LangStmt::Jump(mk_exp_lbl("X1"))
          , mk_lbl("X2")
          , X86LangStmt::SetOp(X86Exp::ExpReg(rax),(Binop::Plus,X86Exp::ExpReg(rax),X86Exp::ExpNum(10)))
-         , X86LangStmt::Jump(X86Exp::ExpLabel(X3))
+         , X86LangStmt::Jump(X86Exp::ExpLabel(lbl_x3))
          , mk_lbl("X1")
-         , X86LangStmt::If(Relop::LT,X86Exp::ExpReg(r9),X86Exp::ExpReg(r8),X86Exp::ExpLabel(X2))
-         , X86LangStmt::Jump(X86Exp::ExpLabel(X3))
+         , X86LangStmt::If(Relop::LT,X86Exp::ExpReg(r9),X86Exp::ExpReg(r8),X86Exp::ExpLabel(lbl_x2))
+         , X86LangStmt::Jump(X86Exp::ExpLabel(lbl_x3))
          , mk_lbl("X3")
          , X86LangStmt::SetOp(X86Exp::ExpReg(rax),(Binop::Plus,X86Exp::ExpReg(rax),X86Exp::ExpNum(10)))
          ]);

@@ -94,7 +94,7 @@ use discard_allocation_info::Variable    as DAIVar;
 //   , MSet(Triv, Triv, Triv)
 //   , ReturnPoint(Label, Exp, i64)
 //   , If(Pred, Box<Effect>, Box<Effect>)
-//   , Begin(Box<Vec<Effect>>, Box<Effect>)
+//   , Begin(Box<Vec<Effect>>)
 //   }
 // 
 // pub enum Variable 
@@ -230,8 +230,19 @@ fn effect(input: Effect) -> DAIEffect {
   , Effect::MSet(base, off, val)        => DAIEffect::MSet(triv_to_var(base), triv_to_offset(off), triv(val)) 
   , Effect::ReturnPoint(lbl, body, off) => DAIEffect::ReturnPoint(lbl, exp(body), off)
   , Effect::If(test, conseq, alt)       => DAIEffect::If(pred(test), mk_box!(effect(*conseq)) , mk_box!(effect(*alt)))
-  , Effect::Begin(effs, body)           => DAIEffect::Begin( mk_box!((*effs).into_iter().map(|e| effect(e)).collect())
-                                                           , mk_box!(effect(*body)))
+  , Effect::Begin(effs)                 => {
+      if (*effs).len() == 0 {
+        DAIEffect::Nop
+      } else {
+        let mut eff_iter = (*effs).into_iter().rev();
+        if let Some(last_eff) = eff_iter.next() {
+          DAIEffect::Begin( mk_box!(eff_iter.rev().map(|e| effect(e)).collect())
+                          , mk_box!(effect(last_eff)))
+        } else {
+          panic!("Tried to retrieve from a non-empty iter and failed.");
+        }
+      }
+    }
   }
 }
 

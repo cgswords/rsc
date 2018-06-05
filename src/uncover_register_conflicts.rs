@@ -16,14 +16,14 @@
 // use util::Binop;
 // use util::Relop;
 // use util::Label;
-use util::Ident;
+// use util::Ident;
 use util::Location;
 // use util::mk_uvar;
 
 use alloc_lang::Program;
 use alloc_lang::LetrecEntry;
 use alloc_lang::RegAllocForm;
-use alloc_lang::RegAllocInfo;
+// use alloc_lang::RegAllocInfo;
 use alloc_lang::Body;
 use alloc_lang::Exp;
 use alloc_lang::Pred;
@@ -33,7 +33,7 @@ use alloc_lang::Triv;
 use alloc_lang::RegConflict;
 use alloc_lang::loc_is_reg;
 use alloc_lang::reg_to_conflict;
-use alloc_lang::var_to_reg_conflict;
+//use alloc_lang::var_to_reg_conflict;
 
 use petgraph::graph::Graph;
 use petgraph::graph::NodeIndex;
@@ -95,7 +95,7 @@ use std::collections::HashSet;
 //   , MSet(Triv, Triv, Triv)
 //   , ReturnPoint(Label, Exp, i64)
 //   , If(Pred, Box<Effect>, Box<Effect>)
-//   , Begin(Box<Vec<Effect>>, Box<Effect>)
+//   , Begin(Box<Vec<Effect>>)
 //   }
 // 
 // pub enum Variable 
@@ -141,7 +141,7 @@ fn letrec_entry(input : LetrecEntry) -> LetrecEntry {
 fn body(input: Body) -> Body {
   match input.alloc
   { RegAllocForm::Allocated(_)                  => Body { alloc : input.alloc , expression : input.expression }
-  , RegAllocForm::Unallocated(mut alloc_info, mut locs) => {
+  , RegAllocForm::Unallocated(mut alloc_info, locs) => {
       let mut conflicts : Graph<RegConflict, (), Undirected> = Graph::new_undirected();
       let mut node_map  : HashMap<RegConflict, NodeIndex>    = HashMap::new();
 
@@ -190,7 +190,7 @@ fn pred( input : &Pred, con_lives : HashSet<RegConflict>, alt_lives : HashSet<Re
   match input
   { Pred::True                  => con_lives.union(&alt_lives).map(|e| e.clone()).collect()
   , Pred::False                 => con_lives.union(&alt_lives).map(|e| e.clone()).collect()
-  , Pred::Op(op, triv1, triv2)  => {
+  , Pred::Op(_op, triv1, triv2)  => {
       let mut triv1_lives = triv(triv1, gs, nm);
       let mut triv2_lives = triv(triv2, gs, nm);
 
@@ -228,7 +228,7 @@ fn effects( input : &Vec<Effect>, liveset : HashSet<RegConflict>
 fn effect( input : &Effect, liveset : HashSet<RegConflict>
          , gs : &mut Graph<RegConflict, (), Undirected>, nm : &mut HashMap<RegConflict, NodeIndex>) -> HashSet<RegConflict> {
   match input
-  { Effect::SetOp(dest, (op, src1, src2)) => {
+  { Effect::SetOp(dest, (_op, src1, src2)) => {
       let mut dest_lives = triv(dest, gs, nm);
       add_conflicts(&dest_lives, &liveset, gs, nm);
 
@@ -240,7 +240,7 @@ fn effect( input : &Effect, liveset : HashSet<RegConflict>
                     .union(&src2_lives).map(|e| e.clone()).collect();
     }
   , Effect::Set(dest, src)                => {
-      let mut dest_lives = triv(src, gs, nm);
+      let mut dest_lives = triv(dest, gs, nm);
       add_conflicts(&dest_lives, &liveset, gs, nm);
       
       let mut src_lives = triv(src, gs, nm);
@@ -263,13 +263,13 @@ fn effect( input : &Effect, liveset : HashSet<RegConflict>
                     .union(&src1_lives).map(|e| e.clone()).collect::<HashSet<_>>()
                     .union(&src2_lives).map(|e| e.clone()).collect();
     }
-  , Effect::ReturnPoint(lbl, e, size)     => exp(e, gs, nm)
+  , Effect::ReturnPoint(_lbl, e, _size)   => exp(e, gs, nm)
   , Effect::If(test, conseq, alt)         => {
       let con_lives = effect(conseq, liveset.clone(), gs, nm);
       let alt_lives = effect(alt, liveset.clone(), gs, nm);
       return pred(test, con_lives, alt_lives, gs, nm);
     }
-  , Effect::Begin(effs, eff)              => effects(effs, effect(eff, liveset, gs, nm), gs, nm)
+  , Effect::Begin(effs)                   => effects(effs, liveset, gs, nm)
   }
 }
 
@@ -309,7 +309,7 @@ fn as_node( input : &RegConflict
 fn add_conflicts( conflict1 : &HashSet<RegConflict>, conflict2 : &HashSet<RegConflict>
                 , conflicts : &mut Graph<RegConflict, (), Undirected>, nmap : &mut HashMap<RegConflict, NodeIndex>) {
   let new_nodes_c1 : HashSet<_> = conflict1.into_iter().map(|&n| as_node(&n, conflicts, nmap)).collect();
-  let new_nodes_c2 : HashSet<_> = conflict1.into_iter().map(|&n| as_node(&n, conflicts, nmap)).collect();
+  let new_nodes_c2 : HashSet<_> = conflict2.into_iter().map(|&n| as_node(&n, conflicts, nmap)).collect();
   for node1 in new_nodes_c1 {
     for node2 in new_nodes_c2.clone() {
       conflicts.add_edge(node1, node2, ());
@@ -351,48 +351,70 @@ pub mod test {
   use petgraph::graph::Graph;
   use std::collections::HashMap;
 
+  #[allow(dead_code)]
   fn calle(call : Triv, args : Vec<Location>) -> Exp { Exp::Call(call, args) }
 
+  #[allow(dead_code)]
   fn ife(test : Pred, conseq : Exp, alt : Exp) -> Exp { Exp::If(test, mk_box!(conseq), mk_box!(alt)) }
 
+  #[allow(dead_code)]
   fn begine(args : Vec<Effect>, base : Exp) -> Exp { Exp::Begin(args, mk_box!(base)) }
 
+  #[allow(dead_code)]
   fn rop(op : Relop, t1 : Triv, t2 : Triv) -> Pred { Pred::Op(op, t1, t2) }
 
+  #[allow(dead_code)]
   fn ifp(test : Pred, conseq : Pred, alt : Pred) -> Pred { Pred::If(mk_box!(test), mk_box!(conseq), mk_box!(alt)) }
 
+  #[allow(dead_code)]
   fn beginp(args : Vec<Effect>, base : Pred) -> Pred { Pred::Begin(args, mk_box!(base)) }
 
+  #[allow(dead_code)]
   fn setopf(t1 : Triv, op : Binop, arg1 : Triv, arg2 : Triv) -> Effect { Effect::SetOp(t1, (op, arg1, arg2)) }
 
+  #[allow(dead_code)]
   fn setf(dest : Triv, src : Triv) -> Effect { Effect::Set(dest, src) }
   
+  #[allow(dead_code)]
   fn nopf() -> Effect { Effect::Nop }
   
+  #[allow(dead_code)]
   fn msetf(dest : Triv, src : Triv, offset : Triv) -> Effect { Effect::MSet(dest, src, offset) }
   
+  #[allow(dead_code)]
   fn retf(lbl : Label,  frame_size : i64, body : Exp) -> Effect { Effect::ReturnPoint(lbl, body, frame_size) }
   
+  #[allow(dead_code)]
   fn iff(test : Pred, conseq : Effect, alt : Effect) -> Effect { Effect::If(test, mk_box!(conseq), mk_box!(alt)) }
  
-  fn beginf(args : Vec<Effect>, base : Effect) -> Effect { Effect::Begin(mk_box!(args), mk_box!(base)) }
+  #[allow(dead_code)]
+  fn beginf(args : Vec<Effect>) -> Effect { Effect::Begin(mk_box!(args)) }
   
+  #[allow(dead_code)]
   fn uv(name : Ident) -> Variable { Variable::UVar(name) }
 
+  #[allow(dead_code)]
   fn vt(name : Ident) -> Triv { Triv::Var(Variable::UVar(name)) }
   
+  #[allow(dead_code)]
   fn nt(val : i64) -> Triv { Triv::Num(val) }
   
+  #[allow(dead_code)]
   fn lt(lbl : Label) -> Triv { Triv::Label(lbl) }
   
+  #[allow(dead_code)]
   fn mreft(src : Triv, offset : Triv) -> Triv { Triv::MRef(mk_box!(src), mk_box!(offset)) }
 
+  #[allow(dead_code)]
   fn fvar(n: i64) -> Triv { Triv::Var(Variable::Loc(index_fvar(n))) }
 
+  #[allow(dead_code)]
   fn reg(s: &str) -> Triv { Triv::Var(Variable::Loc(Location::Reg(Ident::from_str(s)))) }
   
+  #[allow(dead_code)]
   fn regl(s: &str) -> Location { Location::Reg(Ident::from_str(s)) }
 
+  #[allow(dead_code)]
   fn mk_lbl(s : &str) -> Label { Label { label : Ident::from_str(s) } }
 
   fn mk_alloc_form() -> RegAllocInfo
@@ -413,15 +435,8 @@ pub mod test {
     let x3 = mk_uvar("x");
     let y4 = mk_uvar("y");
 
-    let z5 = mk_uvar("z");
     let z6 = mk_uvar("z");
-    let z7 = mk_uvar("z");
-    let z8 = mk_uvar("z");
-    let z9 = mk_uvar("z");
 
-    let z10 = mk_uvar("z");
-    let z11 = mk_uvar("z");
-    let z12 = mk_uvar("z");
 
     let mut map = HashMap::new();
     map.insert(x0, regl("rbx"));

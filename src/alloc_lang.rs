@@ -73,6 +73,7 @@ pub enum Exp
   , Begin(Vec<Effect>,Box<Exp>)
   }
 
+#[allow(dead_code)]
 #[derive(Debug,Clone)]
 pub enum Pred
   { True
@@ -82,36 +83,113 @@ pub enum Pred
   , Begin(Vec<Effect>, Box<Pred>)
   }
 
-#[derive(Debug,Clone)]
+#[derive(Clone)]
 pub enum Effect
   { SetOp(Triv, (Binop, Triv, Triv))
   , Set(Triv, Triv)
   , Nop
-  , MSet(Triv, Triv, Triv)
+  , MSet(Triv, Triv, Triv) // dest, offset, src
   , ReturnPoint(Label, Exp, i64)
   , If(Pred, Box<Effect>, Box<Effect>)
-  , Begin(Box<Vec<Effect>>, Box<Effect>)
+  , Begin(Box<Vec<Effect>>)
   }
 
-#[derive(Debug,Clone)]
+impl fmt::Debug for Effect {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match &self
+    { Effect::SetOp(t1, (op, t2, t3))     => write!(f, "set {:?} ({:?} {:?} {:?})", t1, op, t2, t3)
+    , Effect::Set(t1, t2)                 => write!(f, "set {:?} {:?}", t1, t2)
+    , Effect::Nop                         => write!(f, "nop")
+    , Effect::MSet(t1, t2, t3)            => write!(f, "mset {:?} {:?} {:?}", t1, t2, t3)
+    , Effect::ReturnPoint(lbl, size, exp) => write!(f, "ret_pnt {:?} {:?} {:?}", lbl.label, size, exp)
+    , Effect::If(test, con, alt)          => write!(f, "if {:?} {:?} {:?}", test, con, alt)
+    , Effect::Begin(es)                   => write!(f, "(begin {:?})", es)
+    }
+  }
+}
+
+#[derive(Clone,PartialEq,Eq)]
 pub enum Variable 
   { Loc(Location)
   , UVar(Ident)
   }
 
-#[derive(Debug,Clone)]
+impl fmt::Debug for Variable {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match &self
+    { Variable::Loc(l)  => write!(f, "{:?}", l)
+    , Variable::UVar(v) => write!(f, "v_{:?}", v)
+    }
+  }
+}
+
+#[derive(Clone,PartialEq,Eq)]
 pub enum Triv 
   { Var(Variable)
   , Num(i64) 
   , Label(Label)
-  , MRef(Box<Triv>, Box<Triv>)
+  , MRef(Box<Triv>, Box<Triv>) // src, offset
   }
+
+impl fmt::Debug for Triv {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match &self
+    { Triv::Var(v)       => write!(f, "{:?}", v)
+    , Triv::Num(n)       => write!(f, "{:?}", n)
+    , Triv::Label(n)     => write!(f, "lbl_{:?}", n.label)
+    , Triv::MRef(t1, t2) => write!(f, "(mref {:?} {:?})", t1, t2)
+    }
+  }
+}
 
 impl Triv {
   pub fn is_var(&self) -> bool {
     match self
     { Triv::Var(_) => true
-    , _            => False
+    , _            => false
+    }
+  }
+
+  pub fn is_uvar(&self) -> bool {
+    match self
+    { Triv::Var(Variable::UVar(_)) => true
+    , _                            => false
+    }
+  }
+
+  pub fn is_fvar(&self) -> bool {
+    match self
+    { Triv::Var(Variable::Loc(Location::FrameVar(_))) => true
+    , _                                               => false
+    }
+  }
+
+  pub fn is_reg(&self) -> bool {
+    match self
+    { Triv::Var(Variable::Loc(Location::Reg(_))) => true
+    , _                                          => false
+    }
+  }
+
+  pub fn is_label(&self) -> bool {
+    match self
+    { Triv::Label(_) => true
+    , _              => false
+    }
+  }
+
+  pub fn is_int(&self) -> bool {
+    match self
+    { Triv::Num(_) => true
+    , _            => false
+    }
+  }
+
+  // conservative!
+  pub fn is_int32(&self) -> bool {
+    match self
+    { Triv::Num(n) => (-2147483648 < *n) && (2147483647 > *n)
+    , _            => false
     }
   }
 }
@@ -154,7 +232,7 @@ impl RegConflict {
 
 pub fn loc_is_reg(loc : &Location) -> bool {
   match loc
-  { Location::Reg(_) => true
+  { Location::Reg(_)      => true
   , Location::FrameVar(_) => false
   }
 }
@@ -174,8 +252,8 @@ pub fn reg_to_conflict(l : Location) -> RegConflict {
 // Checks is every block has allocation bindings (instead of unallocation
 // bindings).
 
-pub fn everybody_home(pgm : Program) -> bool {
-  fn is_home(entry : Body) -> bool {
+pub fn everybody_home(pgm : &Program) -> bool {
+  fn is_home(entry : &Body) -> bool {
     match entry.alloc
     { RegAllocForm::Allocated(_)      => true
     , RegAllocForm::Unallocated(_, _) => false
@@ -184,8 +262,8 @@ pub fn everybody_home(pgm : Program) -> bool {
 
   match pgm
   { Program::Letrec(bindings, main) => 
-    { let bindings_home = bindings.into_iter().fold(true, |acc, binding| acc && is_home(binding.rhs));
-      bindings_home && is_home(main)
+    { let bindings_home = bindings.into_iter().fold(true, |acc, binding| acc && is_home(&binding.rhs));
+      bindings_home && is_home(&main)
     }
   }
 }
