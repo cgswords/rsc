@@ -262,6 +262,9 @@ fn main() {
    let output28 = assign_frame_args(assign_frame_variables(uncover_frame_conflicts(uncover_frame_conflicts::test::test1())));
    println!("{:?}",output28);
 
+   let output29 = lower_compiler(reg_alloc(assign_frame_args(assign_frame_variables(uncover_frame_conflicts(uncover_frame_conflicts::test::test1())))));
+   println!("{}",output29);
+
 //  fn calling_convs(input : uil::Program) -> alloc_lang::Program {
 //    assign_frame_variables(
 //    uncover_frame_conflicts(
