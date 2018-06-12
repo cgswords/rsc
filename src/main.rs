@@ -62,6 +62,9 @@ use finalize_alloc_locations::finalize_alloc_locations;
 mod assign_frame_args;
 use assign_frame_args::assign_frame_args;
 
+mod uncover_frame_conflicts;
+use uncover_frame_conflicts::uncover_frame_conflicts;
+
 fn main() {
 
    // TODO: write a pass to optimize jumps
@@ -255,4 +258,16 @@ fn main() {
 
    let output28 = assign_frame_args(assign_frame_args::test::test1());
    println!("{:?}",output28);
+
+   let output28 = assign_frame_args(assign_frame_variables(uncover_frame_conflicts(uncover_frame_conflicts::test::test1())));
+   println!("{:?}",output28);
+
+//  fn calling_convs(input : uil::Program) -> alloc_lang::Program {
+//    assign_frame_variables(
+//    uncover_frame_conflicts(
+//    impose_calling_conventions(
+//    expose_alloc_ptr(
+//    flatten_sets(
+//    remove_complex_operators(input))))))
+//  }
 }

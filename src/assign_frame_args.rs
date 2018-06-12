@@ -33,7 +33,7 @@ use alloc_lang::Pred;
 use alloc_lang::Effect;
 use alloc_lang::Variable;
 use alloc_lang::Triv;
-use alloc_lang::RegConflict;
+use alloc_lang::FrameConflict;
 use alloc_lang::loc_is_reg;
 use alloc_lang::reg_to_conflict;
 use alloc_lang::var_to_reg_conflict;
@@ -221,10 +221,10 @@ fn fv_as_triv() -> Triv {
   Triv::Var(Variable::Loc(Location::Reg(Ident::from_str(FRAME_PTR_REG))))
 }
 
-fn var_findex(v : Variable, vmap : &HashMap<Ident, Location>) -> i64 {
+fn var_findex(v : FrameConflict, vmap : &HashMap<Ident, Location>) -> i64 {
   match v
-  { Variable::Loc(l)  => frame_index(l)
-  , Variable::UVar(v) => if let Some(loc) = vmap.get(&v) { return frame_index(loc.clone()); } else { return -1; }
+  { FrameConflict::FrameVar(n)  => n
+  , FrameConflict::Var(v)       => if let Some(loc) = vmap.get(&v) { return frame_index(loc.clone()); } else { return -1; }
   }
 }
 

@@ -54,11 +54,11 @@ pub enum RegAllocForm
 pub struct RegAllocInfo 
   { pub locals             : Vec<Ident>
   , pub register_conflicts : Graph<RegConflict, (), Undirected>
+  , pub frame_conflicts    : Graph<FrameConflict, (), Undirected>
   , pub unspillables       : Vec<Ident>
   , pub spills             : Vec<Ident>
-  , pub call_lives         : Vec<Variable>
+  , pub call_lives         : Vec<FrameConflict>
   , pub new_frames         : Vec<Vec<Ident>>
-  , pub frame_conflicts    : Graph<FrameConflict, (), Undirected>
   }
 
 impl fmt::Debug for RegAllocInfo {
@@ -204,6 +204,38 @@ pub enum FrameConflict
   , FrameVar(i64)
   }
 
+impl FrameConflict {
+  pub fn is_var(&self) -> bool {
+    match self
+    { FrameConflict::Var(_) => true
+    , FrameConflict::FrameVar(_) => false
+    }
+  }
+
+  pub fn is_fvar(&self) -> bool { !self.is_var() }
+
+  pub fn conflict_findex(&self) -> i64 {
+    match self
+    { FrameConflict::Var(_)       => -1
+    , FrameConflict::FrameVar(n)  => *n
+    }
+  }
+
+  pub fn as_ident(&self) -> Ident {
+    match self
+    { FrameConflict::Var(id)     => id.clone()
+    , FrameConflict::FrameVar(_) => panic!("Tried to get the ident from a frame var conflict")
+    }
+  }
+}
+
+pub fn loc_is_fvar(loc : &Location) -> bool {
+  match loc
+  { Location::Reg(_)      => false
+  , Location::FrameVar(_) => true
+  }
+}
+
 pub fn fvar_to_conflict(l : Location) -> FrameConflict {
   match l
   { Location::FrameVar(n) => FrameConflict::FrameVar(n)
@@ -215,6 +247,7 @@ pub fn var_to_frame_conflict(id : Ident) -> FrameConflict {
   FrameConflict::Var(id)
 }
 
+// ---------------------------------------------------------------------------
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RegConflict
   { Var(Ident)
